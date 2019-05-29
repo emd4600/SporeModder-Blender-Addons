@@ -106,9 +106,9 @@ class ModAPIShaderMaterial(RWMaterial):
     @staticmethod
     def parse_material_builder(material, rw4_material):
 
-        material_data.shader_name = "0x%X" % material.shader_ID
-
         material_data = rw4_material.material_data_ModAPIShaderMaterial
+
+        material_data.shader_name = "0x%X" % material.shader_ID
 
         RWMaterial.parse_material_builder(material, rw4_material)
 

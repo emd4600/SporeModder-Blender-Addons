@@ -125,11 +125,11 @@ class RW4Importer:
                 for i in range(triangleCount):
                     for j in range(3):
                         bMesh.tessfaces[i].vertices_raw[j] = indices[i * 3 + j]
-                        
+
                 if vertices.uvs is not None:
                     uvtex = bMesh.tessface_uv_textures.new()
                     uvtex.name = 'DefaultUV'
-        
+
                     for i, face in enumerate(bMesh.tessfaces):
                         uvtex.data[i].uv1 = (vertices.uvs[face.vertices_raw[0]][0], -vertices.uvs[face.vertices_raw[0]][1])
                         uvtex.data[i].uv2 = (vertices.uvs[face.vertices_raw[1]][0], -vertices.uvs[face.vertices_raw[1]][1])
@@ -234,12 +234,12 @@ class RW4Importer:
             for i, bonePose in enumerate(self.skinsInK.animationSkin.data):
 
                 boneInfo = RW4Importer.BoneInfo()
-                
+
                 boneInfo.abs_bind_pose = Matrix(bonePose.absBindPose.data)
                 boneInfo.inv_bind_pose = (boneInfo.abs_bind_pose.inverted() * baseRot).to_quaternion()
-                
+
                 boneInfo.inv_pose_translation = Vector((bonePose.invPoseTranslation))
-                
+
                 self.bonesInfo.append(boneInfo)
 
                 if self.skinsInK.skeleton.bones[i].flags == 0:
@@ -251,7 +251,7 @@ class RW4Importer:
         qr_x = bAction.fcurves.new(data_path, index=1)
         qr_y = bAction.fcurves.new(data_path, index=2)
         qr_z = bAction.fcurves.new(data_path, index=3)
-        
+
         qr_w.group = bActionGroup
         qr_x.group = bActionGroup
         qr_y.group = bActionGroup
@@ -268,24 +268,24 @@ class RW4Importer:
             qr_x.keyframe_points.insert(kf.time*KeyframeAnim.frames_per_second, qr[1])
             qr_y.keyframe_points.insert(kf.time*KeyframeAnim.frames_per_second, qr[2])
             qr_z.keyframe_points.insert(kf.time*KeyframeAnim.frames_per_second, qr[3])
-            
+
     def importAnimationLocation(self, bPoseBone, bAction, bActionGroup, channel, index):
         data_path = bPoseBone.path_from_id('location')
         vt_x = bAction.fcurves.new(data_path, index=0)
         vt_y = bAction.fcurves.new(data_path, index=1)
         vt_z = bAction.fcurves.new(data_path, index=2)
-        
+
         vt_x.group = bActionGroup
         vt_y.group = bActionGroup
         vt_z.group = bActionGroup
 
         for kf in channel.keyframes:
             vt = Vector((vt_x, vt_y, vt_z))
-            
+
             if bPoseBone.parent is not None:
                 vt = vt + self.bonesInfo[index].inv_pose_translation
-                
-            
+
+
             qr = Quaternion((kf.rot[3], kf.rot[0], kf.rot[1], kf.rot[2])) * self.bonesInfo[index].invBindPose
 
             if bPoseBone.parent is not None:
@@ -302,10 +302,10 @@ class RW4Importer:
                 if self.skinsInK.skeleton.bones[i].name == name:
                     return i
         return -1
-    
+
     def processAnimation(self, animation, animID):
         """ Imports an animation and returns the Blender Action"""
-        
+
         bAction = bpy.data.actions.new(getString(animID))
         self.bAnimationActions.append(bAction)
 
@@ -313,9 +313,9 @@ class RW4Importer:
 
         for c, channel in enumerate(animation.channels):
             boneIndex = self.getBoneIndex(channel.channelID)
-            
+
             bPoseBone = self.bArmatureObject.pose.bones[boneIndex]
-            
+
             bActionGroup = bAction.groups.new(bPoseBone.name)
 
             if channel.keyframeClass == KeyframeAnim.Channel.LocRotScale or channel.keyframeClass == KeyframeAnim.Channel.LocRot:
@@ -326,7 +326,7 @@ class RW4Importer:
                     channel=channel,
                     index=boneIndex
                     )
-                
+
         return bAction
 
     def processAnimations(self):
@@ -336,7 +336,7 @@ class RW4Importer:
             return
 
         animObjects = self.renderWare.getObjects(Animations.type_code)
-        
+
         # Animations
 
         if len(animObjects) > 0:
@@ -355,24 +355,27 @@ class RW4Importer:
                 self.processAnimation(animation, animID)
 
             bpy.ops.object.mode_set(mode='OBJECT')
-            
+
         # Morph handles
-        
+
         handleObjects = self.renderWare.getObjects(MorphHandle.type_code)
-        
+
         if len(handleObjects) > 0:
             bpy.ops.object.mode_set(mode='POSE')
-            
+
             # Check if we have created the animation data yet
             if len(animObjects) == 0:
                 self.bArmatureObject.animation_data_create()
                 self.setBoneInfo()
-                
+
             for handle in handleObjects:
                 bAction = self.processAnimation(handle.animation, handle.handleID)
-                
+
                 bAction.rw4.is_morph_handle = True
-            
+                bAction.rw4.initial_pos = handle.start_pos
+                bAction.rw4.final_pos = handle.end_pos
+                bAction.rw4.default_frame = int(handle.default_time * 24)
+
             bpy.ops.object.mode_set(mode='OBJECT')
 
 

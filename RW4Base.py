@@ -13,20 +13,40 @@ from sporemodder.materials import DirectXEnums
 from collections import namedtuple
 
 nameList = {
-    0xC2299AA7: 'impact',
-    0x9891EEC7: 'madsad',
-    0x30EE8F49: 'scared',
-    0x114BB90C: 'breathe',
-    0x6FB760FF: 'idle',
-    0xB37B55B2: 'move',
-    0x0AC4AEED: 'attack',
-    0x47F0B3DC: 'bend',
-    0x75D4C8CD: 'point',
-    0x998BBF67: 'turnon',
-    0x892788C6: 'lickair',
-    0xDD0DCEF4: 'unique',
-    0xAEB95D4C: 'flap',
-    0xAC04E296: 'tuck',
+    0x998BBF67: 'TurnOn',
+	0x5D8D0055: 'SmileFrown',
+	0x892788C6: 'LickAir',
+	0xDD0DCEF4: 'Unique',
+	0x9891EEC7: 'MadSad',
+	0x30EE8F49: 'Scared',
+	0xAC04E296: 'Tuck',
+	0x47F0B3DC: 'Bend',
+	0x39E912E1: 'DroopRaise',
+	0x70E47545: 'Scale',
+	0x98C942B6: 'Data1',
+	0x98C942B5: 'Data2',
+	0x98C942B4: 'Data3',
+	0x98C942B3: 'Data4',
+	0x98C942B2: 'Data5',
+	0x114BB90C: 'Breathe',
+	0x15054351: 'Stun',
+	0xC2299AA7: 'Impact',
+	0x6FB760FF: 'Idle',
+	0xB37B55B2: 'Move',
+	0x15054351: 'Stun',
+	0x2F056C5D: 'Stop',
+	0x0AC4AEED: 'Attack',
+	0xFD29BD8E: 'ChargeUp',
+	0x2D7AE6C2: 'ChargeHold',
+	0x0EFD249C: 'ChargeRelease',
+	0xBC27846D: 'DeformAxisUpLeft',
+	0x0C292EFF: 'DeformAxisUpFront',
+	0x29771A9E: 'DeformAxisRightFront',
+	0x2BE7B75B: 'DeformAxisLeftFront',
+	0xB9D307D8: 'DeformRadius',
+	0xBB7F0931: 'DeformRadiusTop',
+	0x808C04D9: 'DeformRadiusBottom',
+	0x92BF11C2: 'DeformAxisFront',
     0x2E6521F4: 'DeformAxisForward',
     0x9BFE8BF8: 'DeformAxisBack',
     0x2D3BFA19: 'DeformAxisRight',
@@ -34,7 +54,13 @@ nameList = {
     0xD02751DE: 'DeformAxisUp',
     0xD0BE09E0: 'joint1',
     0xD0BE09E2: 'joint3',
-    0xD0BE09E3: 'joint2'
+    0xD0BE09E3: 'joint2',
+    0xD0BE09E4: 'joint5',
+    0xD0BE09E5: 'joint4',
+    0xD0BE09E6: 'joint7',
+    0xD0BE09E7: 'joint6',
+    0xD0BE09E8: 'joint9',
+    0xD0BE09E9: 'joint8'
 }
 
 
@@ -114,9 +140,12 @@ class FileReader:
     def readFloat(self, endian='<'):
         return struct.unpack(endian + 'f', self.fileBuffer.read(4))[0]
 
+    def readDouble(self, endian='<'):
+        return struct.unpack(endian + 'd', self.fileBuffer.read(8))[0]
+
     def readBoolean(self, endian='<'):
         return struct.unpack(endian + '?', self.fileBuffer.read(1))[0]
-    
+
     def seek(self, offset):
         self.fileBuffer.seek(offset)
 
@@ -146,9 +175,12 @@ class FileWriter:
     def writeFloat(self, value, endian='<'):
         return self.fileBuffer.write(struct.pack(endian + 'f', value))
 
+    def writeDouble(self, value, endian='<'):
+        return self.fileBuffer.write(struct.pack(endian + 'd', value))
+
     def writeBoolean(self, value, endian='<'):
         return self.fileBuffer.write(struct.pack(endian + '?', value))
-    
+
     def write(self, array):
         return self.fileBuffer.write(array)
 
@@ -226,7 +258,7 @@ class ArrayFileWriter(FileWriter):
 
     def writeBoolean(self, value, endian='<'):
         return self.fileBuffer.extend(struct.pack(endian + '?', value))
-    
+
     def write(self, array):
         return self.fileBuffer.extend(array)
 
@@ -1392,68 +1424,46 @@ class BBox(RWObject):
         fileWriter.writeFloat(self.bound_box[1][1])
         fileWriter.writeFloat(self.bound_box[1][2])
         fileWriter.writeInt(self.field_1C)
-        
-        
+
+
 class MorphHandle(RWObject):
     type_code = 0xff0000
     alignment = 4
 
-    def __init__(self, renderWare, handleID=0, default_frame=0.0, animation=None):
+    def __init__(self, renderWare, handleID=0, default_time=0.0, animation=None):
         super().__init__(renderWare)
         self.handleID = handleID
         self.field_4 = 0
-        self.field_8 = 0
-        self.field_C = 0.0
-        self.field_10 = 0
-        self.field_14 = 0.0
-        self.field_18 = 0
-        self.field_1C = 0.0
-        self.field_20 = 0
-        self.field_24 = 0.0
-        self.field_28 = 0
-        self.field_2C = 0.0
-        self.field_30 = 0
-        self.field_34 = 0.0
-        self.default_frame = default_frame
+        self.start_pos = [0.0, 0.0, 0.0]
+        self.end_pos =[0.0, 0.0, 0.0]
+        self.default_time = default_time
         self.animation = animation
 
     def read(self, fileReader):
         self.handleID = fileReader.readUInt()
         self.field_4 = fileReader.readUInt()
-        self.field_8 = fileReader.readUInt()
-        self.field_C = fileReader.readFloat()
-        self.field_10 = fileReader.readUInt()
-        self.field_14 = fileReader.readFloat()
-        self.field_18 = fileReader.readUInt()
-        self.field_1C = fileReader.readFloat()
-        self.field_20 = fileReader.readUInt()
-        self.field_24 = fileReader.readFloat()
-        self.field_28 = fileReader.readUInt()
-        self.field_2C = fileReader.readFloat()
-        self.field_30 = fileReader.readUInt()
-        self.field_34 = fileReader.readFloat()
-        self.default_frame = fileReader.readFloat()
+        self.start_pos[0] = fileReader.readDouble()
+        self.start_pos[1] = fileReader.readDouble()
+        self.start_pos[2] = fileReader.readDouble()
+        self.end_pos[0] = fileReader.readDouble()
+        self.end_pos[1] = fileReader.readDouble()
+        self.end_pos[2] = fileReader.readDouble()
+        self.default_time = fileReader.readFloat()
         self.animation = self.renderWare.getObject(fileReader.readInt())
 
     def write(self, fileWriter):
         fileWriter.writeUInt(self.handleID)
         fileWriter.writeUInt(self.field_4)
-        fileWriter.writeUInt(self.field_8)
-        fileWriter.writeFloat(self.field_C)
-        fileWriter.writeUInt(self.field_10)
-        fileWriter.writeFloat(self.field_14)
-        fileWriter.writeUInt(self.field_18)
-        fileWriter.writeFloat(self.field_1C)
-        fileWriter.writeUInt(self.field_20)
-        fileWriter.writeFloat(self.field_24)
-        fileWriter.writeUInt(self.field_28)
-        fileWriter.writeFloat(self.field_2C)
-        fileWriter.writeUInt(self.field_30)
-        fileWriter.writeFloat(self.field_34)
-        fileWriter.writeFloat(self.default_frame)
+        fileWriter.writeDouble(self.start_pos[0])
+        fileWriter.writeDouble(self.start_pos[1])
+        fileWriter.writeDouble(self.start_pos[2])
+        fileWriter.writeDouble(self.end_pos[0])
+        fileWriter.writeDouble(self.end_pos[1])
+        fileWriter.writeDouble(self.end_pos[2])
+        fileWriter.writeFloat(self.default_time)
         fileWriter.writeInt(self.renderWare.getIndex(self.animation))
-        
-        
+
+
 class TriangleKDTreeProcedural(RWObject):
     type_code = 0x80003
     alignment = 16
@@ -1468,7 +1478,7 @@ class TriangleKDTreeProcedural(RWObject):
         # 28h: triangle_count
         self.field_2C = 0
         # 30h: vertex_count
-        
+
         self.triangle_unknowns = []
         self.bound_box_2 = None
         self.unknown_data = []
@@ -1476,44 +1486,44 @@ class TriangleKDTreeProcedural(RWObject):
     def read(self, fileReader):
         if self.bound_box is None:
             self.bound_box = BBox(self.renderWare)
-            
+
         if self.bound_box_2 is None:
             self.bound_box_2 = BBox(self.renderWare)
-            
+
         self.bound_box.read(fileReader)
-        
+
         self.field_20 = fileReader.readInt()
         self.field_24 = fileReader.readInt()
-        
+
         triangle_count = fileReader.readInt()
         self.field_2C = fileReader.readInt()
         vertex_count = fileReader.readInt()
-        
+
         pTriangles = fileReader.readInt()
         pVertexOffsets = fileReader.readInt()
         p4 = fileReader.readInt()
         p3 = fileReader.readInt()
-        
-        
+
+
         # Read vertices
         fileReader.seek(pVertexOffsets)
         for i in range(vertex_count):
             self.vertices.append((fileReader.readFloat(), fileReader.readFloat(), fileReader.readFloat()))
             fileReader.readInt()
-            
+
         # Read triangles
         fileReader.seek(pTriangles)
         for i in range(triangle_count):
             # it has one integer more, which is usually 0 (?)
             self.triangles.append((fileReader.readInt(), fileReader.readInt(), fileReader.readInt(), fileReader.readInt()))
-            
-            
+
+
         fileReader.seek(p3)
         x = 0
         for i in range(triangle_count):
             if i & 7 == 0:
                 x = fileReader.readInt()
-                
+
             self.triangle_unknowns.append((x >> ((i & 7) * 4)) & 0xf)
 
 
@@ -1531,38 +1541,38 @@ class TriangleKDTreeProcedural(RWObject):
 
     def write(self, fileWriter):
         self.bound_box.write(fileWriter)
-        
+
         fileWriter.writeInt(self.field_20)
         fileWriter.writeInt(self.field_24)
         fileWriter.writeInt(len(self.triangles))
         fileWriter.writeInt(self.field_2C)
         fileWriter.writeInt(len(self.vertices))
-        
+
         pointers_offset = fileWriter.fileBuffer.tell()
-        
+
         pTriangles = 0
         pVertices = 0
         p4 = 0
         p3 = 0
-        
+
         fileWriter.writeInt(pTriangles)
         fileWriter.writeInt(pVertices)
         fileWriter.writeInt(p4)
         fileWriter.writeInt(p3)
 
-        
+
         # Write vertices
         pos = fileWriter.fileBuffer.tell()
         pVertices = (pos + 15) & ~15
-        
+
         fileWriter.write(bytearray(pVertices - pos))
-        
+
         for vertex in self.vertices:
             fileWriter.writeFloat(vertex[0])
             fileWriter.writeFloat(vertex[1])
             fileWriter.writeFloat(vertex[2])
             fileWriter.writeInt(0)
-        
+
         # Write triangles
         pTriangles = fileWriter.fileBuffer.tell()
         for triangle in self.triangles:
@@ -1570,10 +1580,10 @@ class TriangleKDTreeProcedural(RWObject):
             fileWriter.writeInt(triangle[1])
             fileWriter.writeInt(triangle[2])
             fileWriter.writeInt(triangle[3])
-        
-            
+
+
         p3 = fileWriter.fileBuffer.tell()
-        
+
         count = len(self.triangle_unknowns) // 8
         packs = []
         for i in range(count):
@@ -1597,14 +1607,14 @@ class TriangleKDTreeProcedural(RWObject):
         pos = fileWriter.fileBuffer.tell()
         p4 = (pos + 15) & ~15
         fileWriter.write(bytearray(p4 - pos))
-        
+
         fileWriter.writeInt(pVertices - 8 * 4)
         fileWriter.writeInt(len(self.unknown_data))
         fileWriter.writeInt(len(self.triangles))
         fileWriter.writeInt(0)
-        
+
         self.bound_box_2.write(fileWriter)
-        
+
         for i in range(len(self.unknown_data)):
             fileWriter.writeInt(self.unknown_data[i][0])
             fileWriter.writeInt(self.unknown_data[i][1])
@@ -1614,17 +1624,17 @@ class TriangleKDTreeProcedural(RWObject):
             fileWriter.writeInt(self.unknown_data[i][5])
             fileWriter.writeFloat(self.unknown_data[i][6])
             fileWriter.writeFloat(self.unknown_data[i][7])
-            
-            
+
+
         # Write the pointer offsets
         final_pos = fileWriter.fileBuffer.tell()
-        
+
         fileWriter.fileBuffer.seek(pointers_offset)
         fileWriter.writeInt(pTriangles)
         fileWriter.writeInt(pVertices)
         fileWriter.writeInt(p4)
         fileWriter.writeInt(p3)
-        
+
         fileWriter.fileBuffer.seek(final_pos)
 
 
@@ -1650,7 +1660,7 @@ class Animations(RWObject):
         for item in self.animations.items():
             fileWriter.writeUInt(item[0])
             fileWriter.writeInt(self.renderWare.getIndex(item[1]))
-            
+
     def add(self, nameID, keyframeAnim):
         self.animations[nameID] = keyframeAnim
 
@@ -1665,7 +1675,7 @@ class KeyframeAnim(RWObject):
         class Keyframe:
             components = 0
             size = 0
-            
+
             def __init__(self):
                 self.time = 0.0
 
@@ -1710,20 +1720,20 @@ class KeyframeAnim(RWObject):
 
                 fileWriter.writeInt(0)
                 fileWriter.writeFloat(self.time)
-                
+
             def setScale(self, scale):
                 self.scale = scale
-                
+
             def setRotation(self, quaternion):
                 self.rot[0] = quaternion.x
                 self.rot[1] = quaternion.y
                 self.rot[2] = quaternion.z
                 self.rot[3] = quaternion.w
-                
+
             def setTranslation(self, offset):
                 self.loc = offset
-                
-                
+
+
         class LocRot(Keyframe):
             components = 0x101
             size = 36
@@ -1756,7 +1766,7 @@ class KeyframeAnim(RWObject):
                 self.rot[1] = quaternion.y
                 self.rot[2] = quaternion.z
                 self.rot[3] = quaternion.w
-                
+
             def setTranslation(self, offset):
                 self.loc = offset
 
@@ -1854,90 +1864,90 @@ class KeyframeAnim(RWObject):
     def write(self, fileWriter):
         def get_position():
             return fileWriter.fileBuffer.tell()
-        
+
         def set_position(position):
             fileWriter.fileBuffer.seek(position)
-            
+
         def write_offset(dst_pos, offset):
             fileWriter.fileBuffer.seek(dst_pos)
             fileWriter.writeInt(offset)
-            
+
         base_pos = fileWriter.fileBuffer.tell()
-        
+
         pChannelNames = 0
         pChannelData = 0
         pPaddingEnd = 0
         pChannelInfo = 0
-        
+
         ppChannelNames = 0
         ppChannelData = 0
         ppPaddingEnd = 0
         ppChannelInfo = 0
-        
+
         ppChannelNames = get_position()
         fileWriter.writeInt(pChannelNames)
-        
+
         fileWriter.writeInt(len(self.channels))
         fileWriter.writeUInt(self.skeletonID)
         fileWriter.writeInt(self.field_C)
-        
+
         ppChannelData = get_position()
         fileWriter.writeInt(pChannelData)
-        
+
         ppPaddingEnd = get_position()
         fileWriter.writeInt(pPaddingEnd)
-        
+
         fileWriter.writeInt(len(self.channels))
         fileWriter.writeInt(self.field_1C)
         fileWriter.writeFloat(self.length)
         fileWriter.writeInt(self.field_24)
         fileWriter.writeInt(self.flags)
-        
+
         ppChannelInfo = get_position()
         fileWriter.writeInt(pChannelInfo)
-        
+
         # Channel names
         pChannelNames = get_position()
         for channel in self.channels:
             fileWriter.writeUInt(channel.channelID)
-            
+
         # Channel info
         pChannelInfo = get_position()
         for channel in self.channels:
             fileWriter.writeInt(0)  # channel data pos
             fileWriter.writeInt(channel.keyframeClass.size)
             fileWriter.writeInt(channel.keyframeClass.components)
-            
+
         # Channel data
         channelDataOffsets = []
         pChannelData = get_position()
-        
+
         for channel in self.channels:
             channelDataOffsets.append(get_position() - base_pos)
-            
+
             for keyframe in channel.keyframes:
                 keyframe.write(fileWriter)
-                
+
         # Padding
         if len(self.channels) > 0:
             padding = len(self.channels) * len(self.channels[0].keyframes) * 2 * self.channels[0].keyframeClass.size
         else:
             padding = 48
-            
-        fileWriter.fileBuffer.write(bytearray(padding)) 
+
+        fileWriter.fileBuffer.write(bytearray(padding))
         pPaddingEnd = get_position()
-        
+
         # write all offsets
         final_position = get_position()
-        
+
         write_offset(ppChannelNames, pChannelNames)
         write_offset(ppChannelData, pChannelData)
         write_offset(ppPaddingEnd, pPaddingEnd)
         write_offset(ppChannelInfo, pChannelInfo)
-        
+
         for i in range(len(self.channels)):
             write_offset(pChannelInfo + 12*i, channelDataOffsets[i])
-        
+
         set_position(final_position)
 
 

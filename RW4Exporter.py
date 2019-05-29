@@ -99,30 +99,30 @@ class RW4Exporter:
         def __init__(self, absBindPose, invPoseTranslation):
             self.abs_bind_pose = absBindPose
             self.inv_pose_translation = invPoseTranslation
-    
+
     def __init__(self):
         self.renderWare = RW4Base.RenderWare4()
         self.added_textures = {}
 
         self.bArmatureObject = None
         self.bMeshObjects = []
-        
+
         self.bone_bases = {}
 
         self.renderWare.header.rwTypeCode = RW4Base.RWHeader.type_code_model
-        
+
         self.bound_box = None
-        
+
         # for TriangleKDTreeProcedural
         self.triangles = []
         self.vertices = []
         self.triangle_unknowns = []
-        
+
     def get_bone_count(self):
         if self.bArmatureObject is None:
             return 0
         return len(self.bArmatureObject.data.bones)
-    
+
     def get_skin_matrix_buffer_index(self):
         skinMatrixBuffers = self.renderWare.getObjects(RW4Base.SkinMatrixBuffer.type_code)
 
@@ -189,7 +189,7 @@ class RW4Exporter:
         for i in range(size, 4):
             indices.append(0)
             weights.append(0.0)
-            
+
         # Special case: if there are no bone weights, we must do this or the model will be invisible
         if size == 0:
             weights[0] = 1.0
@@ -533,12 +533,12 @@ class RW4Exporter:
         renderWare.addObject(vertexBuffer)
         renderWare.addObject(vertexBuffer.vertexData)
         renderWare.addObject(vertexBuffer.vertexDescription)
-        
+
         # add required things for TriangleKDTreeProcedural
         self.vertices.extend(vertices.pos)
-        
+
         vertex_count = len(vertices)
-        
+
         for face in triangles:
             self.triangles.append((face[0] + vertex_count, face[1] + vertex_count, face[2] + vertex_count, 0))
             self.triangle_unknowns.append(choice(range(1, 13, 2)))
@@ -547,7 +547,7 @@ class RW4Exporter:
         pose = RW4Base.AnimationSkin.BonePose()
         pose.absBindPose = bBone.matrix_local.to_3x3()
         pose.invPoseTranslation = bBone.matrix_local.inverted().to_translation()
-        
+
         base = RW4Exporter.BaseBone(pose.absBindPose, pose.invPoseTranslation)
         self.bone_bases[bBone.name] = base
 
@@ -632,14 +632,14 @@ class RW4Exporter:
         renderWare.addObject(skinsInK)
 
         renderWare.addSubReference(skinMatrixBuffer, 16)
-        
-        
+
+
     def get_total_translation(self, poseBone):
         if poseBone.parent is None:
             return self.get_bone_translation(poseBone)
         else:
             return self.get_bone_translation(poseBone) + self.get_total_translation(poseBone.parent)
-        
+
     def get_bone_translation(self, poseBone):
         # before: using matrix_basis
         # that didn't translate child bones when moving a root in a chain, however
@@ -656,15 +656,15 @@ class RW4Exporter:
             return poseBone.matrix_basis.to_translation() - self.bone_bases[poseBone.name].inv_pose_translation
         else:
             return poseBone.parent.matrix.inverted() * poseBone.matrix.to_translation()
-        
-        
+
+
     def get_total_rotation(self, poseBone):
         if poseBone.parent is None:
             return self.get_bone_rotation(poseBone)
         else:
             # return self.get_bone_rotation(poseBone) * self.get_total_rotation(poseBone.parent)
             return self.get_total_rotation(poseBone.parent) * self.get_bone_rotation(poseBone)
-        
+
     def get_bone_rotation(self, poseBone):
         if poseBone.parent is None:
             return poseBone.matrix.to_quaternion()
@@ -672,99 +672,95 @@ class RW4Exporter:
             # rotation = poseBone.rotation_quaternion * self.bone_bases[poseBone.parent.name].abs_bind_pose.to_quaternion().inverted()
             #rotation = poseBone.matrix.to_quaternion() * self.bone_bases[poseBone.parent.name].abs_bind_pose.to_quaternion().inverted() * poseBone.parent.rotation_quaternion
             return self.get_total_rotation(poseBone.parent).inverted() * poseBone.matrix.to_quaternion()
-        
+
     def export_actions(self):
         if self.bArmatureObject is None:
             return
-        
+
         renderWare = self.renderWare
-        
+
         animationsList = RW4Base.Animations(renderWare)
-        
+
         current_keyframe = bpy.context.scene.frame_current
-        
+
         for bAction in bpy.data.actions:
             if len(bAction.fcurves) == 0:
                 continue
-            
+
             self.bArmatureObject.animation_data.action = bAction
-            
+
             keyframeAnim = RW4Base.KeyframeAnim(renderWare)
             keyframeAnim.skeletonID = RW4Base.getHash(self.bArmatureObject.name)
             keyframeAnim.length = bAction.frame_range[1] / RW4Base.KeyframeAnim.frames_per_second
             keyframeAnim.flags = 3
-            
+
             # Now, either add to animations list or to handles
             if bAction.rw4 is not None and bAction.rw4.is_morph_handle:
                 handle = RW4Base.MorphHandle(renderWare)
                 handle.handleID = RW4Base.getHash(bAction.name)
-                handle.field_C = bAction.rw4.initial_pos[0]
-                handle.field_14 = bAction.rw4.initial_pos[1]
-                handle.field_1C = bAction.rw4.initial_pos[2]
-                handle.field_24 = bAction.rw4.final_pos[0]
-                handle.field_2C = bAction.rw4.final_pos[1]
-                handle.field_34 = bAction.rw4.final_pos[2]
-                handle.default_frame = bAction.rw4.default_frame / bAction.frame_range[1]
+                handle.start_pos = bAction.rw4.initial_pos
+                handle.end_pos = bAction.rw4.final_pos
+                handle.default_time = bAction.rw4.default_frame / bAction.frame_range[1]
                 handle.animation = keyframeAnim
-                
+
                 renderWare.addObject(handle)
-                
+
             else:
                 animationsList.add(RW4Base.getHash(bAction.name), keyframeAnim)
-            
+
             renderWare.addObject(keyframeAnim)
             # renderWare.objects.insert(0, keyframeAnim)
-            
+
             for group in bAction.groups:
-                
+
                 poseBone = next(b for b in self.bArmatureObject.pose.bones if b.name == group.name)
                 baseBone = self.bone_bases[group.name]
-                
+
                 channel = RW4Base.KeyframeAnim.Channel(RW4Base.KeyframeAnim.Channel.LocRotScale)  # TODO
                 channel.channelID = RW4Base.getHash(group.name)
                 keyframeAnim.channels.append(channel)
-                
+
                 bpy.context.scene.frame_set(0)
-                
+
                 for kf in group.channels[0].keyframe_points:
                     bpy.context.scene.frame_set(int(kf.co[0]))
-                    
+
                     keyframe = channel.newKeyframe(kf.co[0] / RW4Base.KeyframeAnim.frames_per_second)
-                    
+
                     # baseTransform * keyframeTransform = finalTransform
                     # blenderKeyframe = finalTranform ?
-                    
+
                     # translation = poseBone.matrix.to_translation()
-                    
+
                     translation = self.get_bone_translation(poseBone)
-                    
+
                     scale = poseBone.matrix.to_scale()
-                    
+
                     rotation = self.get_bone_rotation(poseBone)
-                    
+
 #                     if poseBone.parent is None:
 #                         rotation = poseBone.matrix.to_quaternion()
 #                     else:
 #                         # rotation = poseBone.rotation_quaternion * self.bone_bases[poseBone.parent.name].abs_bind_pose.to_quaternion().inverted()
 #                         rotation = poseBone.matrix.to_quaternion() * self.bone_bases[poseBone.parent.name].abs_bind_pose.to_quaternion().inverted() * poseBone.parent.rotation_quaternion
-                    
+
                     keyframe.setTranslation(translation)
                     keyframe.setScale(scale)
-                    
+
                     # keyframe.setRotation(baseBone.abs_bind_pose.to_quaternion().inverted() * poseBone.matrix.to_quaternion())
                     keyframe.setRotation(rotation)
-        
-        
+
+
         if len(animationsList.animations) > 0:
             renderWare.addObject(animationsList)
             renderWare.addSubReference(animationsList, 8)
-            
+
         bpy.context.scene.frame_set(current_keyframe)
-        
+
     def calcGlobalBBox(self):
         minBBox = [self.bMeshObjects[0].bound_box[0][0], self.bMeshObjects[0].bound_box[0][1], self.bMeshObjects[0].bound_box[0][2]]
         maxBBox = [self.bMeshObjects[0].bound_box[6][0], self.bMeshObjects[0].bound_box[6][1], self.bMeshObjects[0].bound_box[6][2]]
-        
+
         for i in range(1, len(self.bMeshObjects)):
             if self.bMeshObjects[i].bound_box[0][0] < minBBox[0]:
                 minBBox[0] = self.bMeshObjects[i].bound_box[0][0]
@@ -772,21 +768,21 @@ class RW4Exporter:
                 minBBox[1] = self.bMeshObjects[i].bound_box[0][1]
             if self.bMeshObjects[i].bound_box[0][2] < minBBox[2]:
                 minBBox[2] = self.bMeshObjects[i].bound_box[0][2]
-    
+
             if self.bMeshObjects[i].bound_box[6][0] > maxBBox[0]:
                 maxBBox[0] = self.bMeshObjects[i].bound_box[6][0]
             if self.bMeshObjects[i].bound_box[6][1] > maxBBox[1]:
                 maxBBox[1] = self.bMeshObjects[i].bound_box[6][1]
             if self.bMeshObjects[i].bound_box[6][2] > maxBBox[2]:
                 maxBBox[2] = self.bMeshObjects[i].bound_box[6][2]
-    
+
         return [minBBox, maxBBox]
-    
+
     def export_bbox(self):
         if len(self.bMeshObjects) > 0:
             self.bound_box = RW4Base.BBox(self.renderWare, bound_box=self.calcGlobalBBox())
             self.renderWare.addObject(self.bound_box)
-            
+
     def export_kdtree(self):
         kdtree = RW4Base.TriangleKDTreeProcedural(self.renderWare)
         kdtree.bound_box = self.bound_box
@@ -794,7 +790,7 @@ class RW4Exporter:
         kdtree.triangles = self.triangles
         kdtree.vertices = self.vertices
         kdtree.triangle_unknowns = self.triangle_unknowns
-        
+
         self.renderWare.addObject(kdtree)
 
 
@@ -809,7 +805,7 @@ def exportRW4(file):
     for obj in bpy.context.scene.objects:
         if obj.type == 'ARMATURE':
             exporter.export_armature_object(obj)
-            
+
     exporter.export_actions()
 
     for obj in bpy.context.scene.objects:
@@ -818,11 +814,11 @@ def exportRW4(file):
 
     exporter.export_bbox()
     exporter.export_kdtree()
-    
-    
-#     # try ordering 
+
+
+#     # try ordering
 #     objects = []
-#     
+#
 #     objects.extend([x for x in exporter.renderWare.objects if type(x) is RW4Base.KeyframeAnim])
 #     objects.extend([x for x in exporter.renderWare.objects if type(x) is RW4Base.MorphHandle])
 #     objects.extend([x for x in exporter.renderWare.objects if type(x) is RW4Base.BBox])
@@ -838,11 +834,11 @@ def exportRW4(file):
 #     objects.extend([x for x in exporter.renderWare.objects if type(x) is RW4Base.Skeleton])
 #     objects.extend([x for x in exporter.renderWare.objects if type(x) is RW4Base.VertexBuffer])
 #     objects.extend([x for x in exporter.renderWare.objects if type(x) is RW4Base.Raster])
-# 
+#
 #     objects.extend([x for x in exporter.renderWare.objects if type(x) is RW4Base.BaseResource])
-#     
+#
 #     exporter.renderWare.objects = objects
-    
+
     print(exporter.renderWare.objects)
 
     exporter.renderWare.write(RW4Base.FileWriter(file))
