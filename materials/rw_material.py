@@ -3,16 +3,15 @@ __author__ = 'Eric'
 
 import bpy
 from bpy.props import BoolProperty
-from sporemodder import materials
 
 
 # All RW materials must extend this class
 class RWMaterial(bpy.types.PropertyGroup):
     material_name = ""
     material_description = ""
-    material_has_material_color = BoolProperty(default=False)
-    material_has_ambient_color = BoolProperty(default=False)
-    material_use_alpha = BoolProperty(default=False)
+    material_has_material_color = False
+    material_has_ambient_color = False
+    material_use_alpha = False
 
     @staticmethod
     def set_pointer_property(cls):

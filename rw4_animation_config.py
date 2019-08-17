@@ -1,15 +1,10 @@
 import bpy
 
-from bpy.props import (StringProperty,
-                       BoolProperty,
+from bpy.props import (BoolProperty,
                        IntProperty,
-                       FloatProperty,
                        FloatVectorProperty,
-                       EnumProperty,
                        PointerProperty,
-                       CollectionProperty
                        )
-
 
 
 class RW4AnimProperties(bpy.types.PropertyGroup):
@@ -44,57 +39,52 @@ class RW4AnimProperties(bpy.types.PropertyGroup):
     def unregister(cls):
         del bpy.types.Action.rw4
 
-class RW4AnimUIList(bpy.types.UIList):
-    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
 
+class SPORE_UL_rw_anims(bpy.types.UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_property, index, flt_flag):
         # We could write some code to decide which icon to use here...
         custom_icon = 'OBJECT_DATAMODE'
 
         # Make sure your code supports all 3 layout types
         if self.layout_type in {'DEFAULT', 'COMPACT'}:
-            layout.label(item.name, icon=custom_icon)  # bpy.data.actions[item.Index]
+            layout.label(text=item.name, icon=custom_icon)
 
         elif self.layout_type in {'GRID'}:
             layout.alignment = 'CENTER'
-            layout.label(item.name, icon=custom_icon)
+            layout.label(text=item.name, icon=custom_icon)
 
 
-class AnimPanel(bpy.types.Panel):
-
-    bl_label = "RenderWare4 Animation Config"
+class SPORE_PT_rw_anims(bpy.types.Panel):
+    bl_label = "RenderWare4 Animations"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = 'scene'
 
     def draw(self, context):
-        lay = self.layout
+        self.layout.use_property_split = True
 
-        row = lay.row()
-        row.template_list("RW4AnimUIList", "The_List", bpy.data, "actions", context.scene, "rw4ListIndex")
+        self.layout.template_list("SPORE_UL_rw_anims", "The_List", bpy.data, "actions", context.scene, "rw4_list_index")
 
         if len(bpy.data.actions) > 0:
-            item = bpy.data.actions[context.scene.rw4ListIndex].rw4
-
-            row = lay.row()
-            row.prop(item, 'is_morph_handle')
+            item = bpy.data.actions[context.scene.rw4_list_index].rw4
+            self.layout.prop(item, 'is_morph_handle')
 
             if item.is_morph_handle:
-                row = lay.row()
-                row.prop(item, 'initial_pos')
-
-                row = lay.row()
-                row.prop(item, 'final_pos')
-
-                row = lay.row()
-                row.prop(item, 'default_frame')
+                self.layout.prop(item, 'initial_pos')
+                self.layout.prop(item, 'final_pos')
+                self.layout.prop(item, 'default_frame')
         
 
 def register():
+    bpy.utils.register_class(SPORE_UL_rw_anims)
     bpy.utils.register_class(RW4AnimProperties)
-    bpy.types.Scene.rw4ListIndex = IntProperty(name="Index for rw4_list", default=0)  # , update=update_action_list)
+    bpy.utils.register_class(SPORE_PT_rw_anims)
+    bpy.types.Scene.rw4_list_index = IntProperty(name="Index for rw4_list", default=0)  # , update=update_action_list)
 
 
 def unregister():
+    bpy.utils.unregister_class(SPORE_PT_rw_anims)
     bpy.utils.unregister_class(RW4AnimProperties)
+    bpy.utils.unregister_class(SPORE_UL_rw_anims)
 
-    del bpy.types.Scene.rw4ListIndex
+    del bpy.types.Scene.rw4_list_index

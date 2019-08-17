@@ -2,32 +2,23 @@ __author__ = 'Eric'
 
 import bpy
 from bpy.props import (StringProperty,
-                       BoolProperty,
-                       IntProperty,
-                       FloatProperty,
                        FloatVectorProperty,
                        EnumProperty,
                        PointerProperty,
-                       CollectionProperty
                        )
 
 
-from sporemodder import materials
+from . import materials
 from collections import namedtuple
 
 
 ActiveMaterial = namedtuple('ActiveMaterial', ('material_data', 'material_class'))
 
 
-def get_materials_enum():
-    return [(cls.__name__, cls.material_name, cls.material_description) for cls in materials.material_classes]
-
-
 def set_material_type(rw4_material, context):
     for cls in materials.material_classes:
         print(cls.__name__)
         cls.set_is_active_material(rw4_material, cls.__name__ == rw4_material.material_type)
-
 
     return None
 
@@ -47,7 +38,7 @@ def get_active_material(rw4_material):
     return None
 
 
-materials_enum = get_materials_enum()
+materials_enum = [(cls.__name__, cls.material_name, cls.material_description) for cls in materials.material_classes]
 
 
 def material_type_getter(self):
@@ -65,7 +56,7 @@ def material_type_setter(self, value):
 class RWBaseMaterial(bpy.types.PropertyGroup):
     @classmethod
     def register(cls):
-        bpy.types.Material.renderWare4 = PointerProperty(type=cls)
+        bpy.types.Material.rw4 = PointerProperty(type=cls)
 
         cls.material_type = EnumProperty(
             items=materials_enum,
@@ -112,10 +103,10 @@ class RWBaseMaterial(bpy.types.PropertyGroup):
 
     @classmethod
     def unregister(cls):
-        del bpy.types.Material.renderWare4
+        del bpy.types.Material.rw4
 
 
-class RWMaterialPanel(bpy.types.Panel):
+class SPORE_PT_rw_material(bpy.types.Panel):
     bl_label = "RenderWare4 Material Config"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
@@ -123,29 +114,26 @@ class RWMaterialPanel(bpy.types.Panel):
 
     def draw(self, context):
         if context.material is not None:
+            material_data = context.material.rw4
 
-            materialData = context.material.renderWare4
+            self.layout.use_property_split = True
 
-            row = self.layout.row()
-            row.prop(materialData, 'material_type')
+            self.layout.prop(material_data, 'material_type')
 
-            active_material = get_active_material(materialData)
+            active_material = get_active_material(material_data)
 
             if active_material is not None:
 
                 if active_material.material_data.material_has_material_color:
-                    row = self.layout.row()
-                    row.prop(materialData, 'material_color')
+                    self.layout.prop(material_data, 'material_color')
 
                 if active_material.material_data.material_has_ambient_color:
-                    row = self.layout.row()
-                    row.prop(materialData, 'ambient_color')
+                    self.layout.prop(material_data, 'ambient_color')
                     
                 if active_material.material_data.material_use_alpha:
-                    row = self.layout.row()
-                    row.prop(materialData, 'alpha_type')
+                    self.layout.prop(material_data, 'alpha_type')
 
-                active_material.material_class.draw_panel(self.layout, materialData)
+                active_material.material_class.draw_panel(self.layout, material_data)
 
 
 def register():
@@ -153,6 +141,7 @@ def register():
         bpy.utils.register_class(cls)
 
     bpy.utils.register_class(RWBaseMaterial)
+    bpy.utils.register_class(SPORE_PT_rw_material)
 
 
 def unregister():
@@ -160,3 +149,4 @@ def unregister():
         bpy.utils.unregister_class(cls)
 
     bpy.utils.unregister_class(RWBaseMaterial)
+    bpy.utils.unregister_class(SPORE_PT_rw_material)
