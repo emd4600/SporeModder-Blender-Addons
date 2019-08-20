@@ -247,7 +247,10 @@ SPORE_NAMES = {
     0xD0BE09E6: 'joint7',
     0xD0BE09E7: 'joint6',
     0xD0BE09E8: 'joint9',
-    0xD0BE09E9: 'joint8'
+    0xD0BE09E9: 'joint8',
+    0x7BD05F71: 'root',
+    0xC045A9A3: 'tool',
+    0x4CF9B596: 'base'
 }
 
 

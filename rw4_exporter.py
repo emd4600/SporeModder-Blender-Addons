@@ -666,14 +666,14 @@ class RW4Exporter:
             self.b_armature_object.animation_data.action = b_action
 
             keyframe_anim = rw4_base.KeyframeAnim(render_ware)
-            keyframe_anim.skeletonID = file_io.get_hash(self.b_armature_object.name)
+            keyframe_anim.skeleton_id = file_io.get_hash(self.b_armature_object.name)
             keyframe_anim.length = b_action.frame_range[1] / rw4_base.KeyframeAnim.frames_per_second
             keyframe_anim.flags = 3
 
             # Now, either add to animations list or to handles
             if b_action.rw4 is not None and b_action.rw4.is_morph_handle:
                 handle = rw4_base.MorphHandle(render_ware)
-                handle.handleID = file_io.get_hash(b_action.name)
+                handle.handle_id = file_io.get_hash(b_action.name)
                 handle.start_pos = b_action.rw4.initial_pos
                 handle.end_pos = b_action.rw4.final_pos
                 handle.default_time = b_action.rw4.default_frame / b_action.frame_range[1]
@@ -701,7 +701,7 @@ class RW4Exporter:
                 base_bone = self.bone_bases[group.name]
 
                 channel = rw4_base.AnimationChannel(rw4_base.LocRotScaleKeyframe)  # TODO
-                channel.channelID = file_io.get_hash(group.name)
+                channel.channel_id = file_io.get_hash(group.name)
                 keyframe_anim.channels.append(channel)
 
                 bpy.context.scene.frame_set(0)

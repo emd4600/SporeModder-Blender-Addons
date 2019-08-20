@@ -1,16 +1,59 @@
 import bpy
 from bpy_extras.io_utils import ImportHelper, ExportHelper
+from . import addon_updater_ops
 
 
 bl_info = {
     "name": "SporeModder Add-ons",
     "author": "emd4600",
     "blender": (2, 80, 0),
-    "version": (2, 1, 0),
+    "version": (2, 0, 0),
     "location": "File > Import-Export",
     "description": "Import Spore .gmdl and .rw4 model formats. Export .rw4 format.",
+    "wiki_url": "https://github.com/Emd4600/SporeModder-FX/wiki",
+    "tracker_url": "https://github.com/emd4600/SporeModder-Blender-Addons/issues/new",
     "category": "Import-Export"
 }
+
+
+class Preferences(bpy.types.AddonPreferences):
+
+    bl_idname = __package__
+
+    auto_check_update: bpy.props.BoolProperty(
+        name="Auto-check for Update",
+        description="If enabled, auto-check for updates using an interval",
+        default=True,
+    )
+    updater_intrval_months: bpy.props.IntProperty(
+        name='Months',
+        description="Number of months between checking for updates",
+        default=0,
+        min=0
+    )
+    updater_intrval_days: bpy.props.IntProperty(
+        name='Days',
+        description="Number of days between checking for updates",
+        default=7,
+        min=0,
+    )
+    updater_intrval_hours: bpy.props.IntProperty(
+        name='Hours',
+        description="Number of hours between checking for updates",
+        default=0,
+        min=0,
+        max=23
+    )
+    updater_intrval_minutes: bpy.props.IntProperty(
+        name='Minutes',
+        description="Number of minutes between checking for updates",
+        default=0,
+        min=0,
+        max=59
+    )
+
+    def draw(self, context):
+        addon_updater_ops.update_settings_ui(self, context)
 
 
 class ImportGMDL(bpy.types.Operator, ImportHelper):
@@ -50,10 +93,10 @@ class ImportRW4(bpy.types.Operator, ImportHelper):
         description="",
         default=True
     )
-    import_movements: bpy.props.BoolProperty(
-        name="Import Movements [EXPERIMENTAL]",
-        description="If present, import animations and morphs",
-        default=False
+    import_animations: bpy.props.BoolProperty(
+        name="Import Animations [EXPERIMENTAL]",
+        description="If present, import animation movements and morphs",
+        default=True
     )
 
     def execute(self, context):
@@ -62,7 +105,7 @@ class ImportRW4(bpy.types.Operator, ImportHelper):
         settings = RW4ImporterSettings()
         settings.import_materials = self.import_materials
         settings.import_skeleton = self.import_skeleton
-        settings.import_movements = self.import_movements
+        settings.import_animations = self.import_animations
 
         file = open(self.filepath, 'br')
         result = {'CANCELLED'}
@@ -106,6 +149,7 @@ def rw4_exporter_menu_func(self, context):
 
 
 classes = (
+    Preferences,
     ImportGMDL,
     ImportRW4,
     ExportRW4
@@ -113,6 +157,8 @@ classes = (
 
 
 def register():
+    addon_updater_ops.register(bl_info)
+
     from . import rw4_material_config, rw4_animation_config
 
     rw4_material_config.register()
