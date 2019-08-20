@@ -240,6 +240,16 @@ class RW4Importer:
             axis = Vector((0, 1, 0))
             roll = 0.0
 
+            # skin = self.skins_ink.animation_skin.data[i]
+            # m = Matrix(skin.matrix.data)
+            # t = Vector(skin.translation)
+            # inv_bind_pose = m.inverted().to_4x4()
+            # inv_bind_pose[0][3] = t[0]
+            # inv_bind_pose[1][3] = t[1]
+            # inv_bind_pose[2][3] = t[2]
+            #
+            # axis, roll = mat3_to_vec_roll(m.transposed().to_3x3())
+
             b_bone.head = translation
             b_bone.tail = axis * bone_length + b_bone.head
             b_bone.roll = roll
@@ -330,8 +340,12 @@ class RW4Importer:
             bpy.context.scene.frame_set(time)  # So that parent.matrix works
 
             if import_locrot:
-                # Rotation is in model space
                 qr = channel_keyframes[index][k].r
+                vt = channel_keyframes[index][k].t
+
+                transform = Matrix.Translation(vt) @ qr.to_matrix().to_4x4()
+
+                # Rotation is in model space
                 if b_pose_bone.parent is not None:
                     qr = qr @ b_pose_bone.parent.matrix.inverted().to_quaternion()
 
@@ -341,7 +355,6 @@ class RW4Importer:
                 print(b_pose_bone.matrix)
 
                 # Translation in model space; in Blender it's bone pose local space, but before applying rotation
-                vt = channel_keyframes[index][k].t
                 print(vt)
                 # vt = vt  + b_pose_bone.bone.head_local
                 # vt = self.b_armature_object.convert_space(pose_bone=b_pose_bone, matrix=Matrix.Translation(vt),
@@ -354,27 +367,26 @@ class RW4Importer:
                 else:
                     matrix = b_pose_bone.bone.matrix_local @ qr.to_matrix().to_4x4()
 
-                print(matrix)
+                # b_pose_bone.matrix is not available here yet, so we have to calculate it by hand
 
-                # if b_pose_bone.parent is not None:
-                #     parent_transform = (b_pose_bone.parent.matrix @ b_pose_bone.parent.bone.matrix_local.inverted())
-                # else:
-                #     parent_transform = Matrix.Identity(4)
-                #
-                # vt = vt + b_pose_bone.bone.head_local
-                # # matrix = b_pose_bone.matrix.to_3x3().copy() @ qr.to_matrix()
-                # matrix = Matrix.Translation(parent_transform @ b_pose_bone.bone.head_local) @ matrix.to_3x3().to_4x4()
-                # print(matrix)
-                # vt = matrix.inverted() @ vt
+                if b_pose_bone.parent is not None:
+                    parent_transform = (b_pose_bone.parent.matrix @ b_pose_bone.parent.bone.matrix_local.inverted())
+                else:
+                    parent_transform = Matrix.Identity(4)
 
+                matrix = Matrix.Translation(parent_transform @ b_pose_bone.bone.head_local) @ matrix.to_3x3().to_4x4()
                 parent_matrix = b_pose_bone.parent.matrix if b_pose_bone.parent is not None else Matrix.Identity(4)
 
                 # The position, in world coordinates relative to origin
-                world_pos = vt + b_pose_bone.bone.head_local
+                world_pos = transform @ b_pose_bone.bone.head_local
+
+                #### THIS THING CONVERTS FROM WORLD TO LOCAL COORDINATES CORRECTLY ####
+                print(f"world_pos: {world_pos}")
                 # The position, in world coordinates relative to posed position
-                world_pos_relative = world_pos - b_pose_bone.matrix.to_translation()
+                world_pos_relative = world_pos - matrix.to_translation()
                 # Maybe try with pb.bone.matrix_local.to_3x3().inverted() instead
                 local_pos_relative = parent_matrix.to_3x3().inverted() @ world_pos_relative
+                vt = local_pos_relative
 
                 # vt = vt + b_pose_bone.bone.head_local
                 # if b_pose_bone.parent is not None:
@@ -501,15 +513,16 @@ class RW4Importer:
                 # Apply the scale
                 scale_matrix = Matrix.Diagonal((1.0 / previous_scale.x, 1.0 / previous_scale.y, 1.0 / previous_scale.z))
                 m = scale_matrix @ Matrix.Diagonal(pose_bone.s)
+                m = previous_rot @ (scale_matrix @ pose_bone.r.to_matrix())
                 # Apply the rotation
-                m = (pose_bone.r.to_matrix().transposed() @ m) @ previous_rot
-                t = pose_bone.t @ previous_rot + previous_loc
+                # m = (pose_bone.r.to_matrix().transposed() @ m) @ previous_rot
+
+                t = pose_bone.t @ previous_rot.transposed() + previous_loc
 
                 if not skip_bone:
-                    # Try other order?  #TODO if it doesn't work, try this
-                    dst_r = (bone.matrix @ m).transposed()
-                    #dst_r = m.transposed() @ bone.matrix.inverted()
-                    dst_t = t + (bone.translation @ m)
+                    dst_r = m @ bone.matrix.inverted()
+                    # dst_t = t + (bone.translation @ m.transposed())
+                    dst_t = t + (m @ bone.translation)
                     for i in range(3):
                         print(f"skin_bones_data += struct.pack('ffff', {dst_r[i][0]}, {dst_r[i][1]}, {dst_r[i][2]}, {dst_t[i]})")
                     channel_keyframes[c].append(PoseBone(dst_r.to_quaternion(), dst_t, dst_r.to_scale()))
