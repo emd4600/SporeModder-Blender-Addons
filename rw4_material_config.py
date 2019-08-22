@@ -8,7 +8,7 @@ from bpy.props import (StringProperty,
                        )
 
 
-from . import materials
+from . import materials, addon_updater_ops
 from collections import namedtuple
 
 
@@ -113,6 +113,8 @@ class SPORE_PT_rw_material(bpy.types.Panel):
     bl_context = 'material'
 
     def draw(self, context):
+        addon_updater_ops.check_for_update_background()
+
         if context.material is not None:
             material_data = context.material.rw4
 
@@ -134,6 +136,8 @@ class SPORE_PT_rw_material(bpy.types.Panel):
                     self.layout.prop(material_data, 'alpha_type')
 
                 active_material.material_class.draw_panel(self.layout, material_data)
+
+        addon_updater_ops.update_notice_box_ui(self, context)
 
 
 def register():

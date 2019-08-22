@@ -978,10 +978,11 @@ class SkeletonBone:
     TYPE_BRANCH = 2
     TYPE_BRANCH_LEAF = 3
 
-    def __init__(self, name, flags, parent):
+    def __init__(self, name, flags=0, parent=None):
         self.name = name
         self.flags = flags
         self.parent = parent
+        self.parent_index = -1
         self.matrix = None
         self.translation = None
 
@@ -1005,7 +1006,7 @@ class Skeleton(RWObject):
         file.read_int()  # boneCount again?
 
         for i in range(bone_count):
-            self.bones.append(SkeletonBone(0, 0, None))
+            self.bones.append(SkeletonBone(-1))
 
         file.seek(p_bone_names)
         for bone in self.bones:
@@ -1020,6 +1021,7 @@ class Skeleton(RWObject):
             index = file.read_int()
             if index != -1:
                 bone.parent = self.bones[index]
+                bone.parent_index = index
 
     def write(self, file: FileWriter):
         base_pos = file.tell()
@@ -1081,7 +1083,7 @@ class MorphHandle(RWObject):
 
     def __init__(self, render_ware, handle_id=0, default_time=0.0, animation=None):
         super().__init__(render_ware)
-        self.handleID = handle_id
+        self.handle_id = handle_id
         self.field_4 = 0
         self.start_pos = [0.0, 0.0, 0.0]
         self.end_pos = [0.0, 0.0, 0.0]
@@ -1089,7 +1091,7 @@ class MorphHandle(RWObject):
         self.animation = animation
 
     def read(self, file):
-        self.handleID = file.read_uint()
+        self.handle_id = file.read_uint()
         self.field_4 = file.read_uint()
         self.start_pos[0] = file.read_double()
         self.start_pos[1] = file.read_double()
@@ -1101,7 +1103,7 @@ class MorphHandle(RWObject):
         self.animation = self.render_ware.get_object(file.read_int())
 
     def write(self, file):
-        file.write_uint(self.handleID)
+        file.write_uint(self.handle_id)
         file.write_uint(self.field_4)
         file.write_double(self.start_pos[0])
         file.write_double(self.start_pos[1])

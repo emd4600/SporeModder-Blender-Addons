@@ -6,6 +6,7 @@ from .file_io import FileReader, ArrayFileReader, get_name
 from mathutils import Matrix, Quaternion, Vector
 import math
 import bpy
+from collections import OrderedDict
 
 
 def show_message_box(message: str, title: str, icon='ERROR'):
@@ -47,23 +48,61 @@ def mat3_to_vec_roll(mat):
     return vec, roll
 
 
+class PoseBone:
+    """Contains the basic information of a bone (rotation, position, scale) using 'mathutils' objects."""
+    def __init__(self, r: Quaternion = Quaternion(), t: Vector = Vector.Fill(3), s: Vector = Vector.Fill(3, 1.0)):
+        self.r = r
+        self.t = t
+        self.s = s
+
+
+def interpolate_pose(animation, time, channel_index, keyframe_poses) -> PoseBone:
+    """Returns the interpolated pose at 'time' for the given channel."""
+    # 1. Get the floor keyframe
+    floor_kf = None  # (time, pose)
+    for kf_time, pose_bones in keyframe_poses:
+        if kf_time < time:
+            floor_kf = (kf_time, pose_bones[channel_index])
+        else:
+            break
+    # No floor time? Malformed animation
+    if floor_kf is None:
+        raise rw4_base.ModelError(
+            f"Malformed animation: channel {channel_index} is missing floor keyframe for time {time}", animation)
+
+    # 2. Get the ceil keyframe
+    ceil_kf = None  # (time, pose)
+    for kf_time, pose_bones in keyframe_poses:
+        if kf_time > time:
+            ceil_kf = (kf_time, pose_bones[channel_index])
+            break
+
+    # No ceil time? Malformed animation
+    if ceil_kf is None:
+        raise rw4_base.ModelError(
+            f"Malformed animation: channel {channel_index} is missing ceil keyframe for time {time}", animation)
+
+    # Convert times to 0-1 range
+    floor_factor = floor_kf[0] / animation.length
+    ceil_factor = ceil_kf[0] / animation.length
+    factor = time / animation.length
+    lerp_factor = (factor - floor_factor) / (ceil_factor - floor_factor)
+    r = floor_kf[1].r.slerp(ceil_factor[1].r, lerp_factor)
+    t = floor_kf[1].t.lerp(ceil_factor[1].t, lerp_factor)
+    s = floor_kf[1].s.lerp(ceil_factor[1].s, lerp_factor)
+    return PoseBone(r=r, t=t, s=s)
+
+
 class RW4ImporterSettings:
     def __init__(self):
         self.import_materials = True
         self.import_skeleton = True
-        self.import_movements = True
+        self.import_animations = True
 
 
 class RW4Importer:
-    class BoneInfo:
-        def __init__(self):
-            self.abs_bind_pose = None
-            self.inv_pose_translation = None
-            self.inv_bind_pose = None
-            self.pose_translation = None
-
     def __init__(self, render_ware: rw4_base.RenderWare4, file: FileReader, settings: RW4ImporterSettings):
-        # for blender objects, we use the prefix b
+        # For blender objects, we use the prefix b
         self.render_ware = render_ware
         self.file = file
         self.settings = settings
@@ -75,16 +114,19 @@ class RW4Importer:
         self.b_armature = None
         self.b_armature_object = None
         self.skins_ink = None
-
+        self.bones = []  # type: List[rw4_base.SkeletonBone]
         self.b_animation_actions = []
-        self.bones_info = []
+        self.base_bones = []
+        self.animation_bones = {}  # maps ID to list of channels, which are lists of PoseBone keyframes
 
     def process(self):
-        self.process_skeleton()
-        self.process_meshes()
-        self.process_animations()
+        if self.settings.import_skeleton:
+            self.import_skeleton()
+        self.import_meshes()
+        if self.settings.import_animations:
+            self.import_animations()
 
-    def process_meshes(self):
+    def import_meshes(self):
         mesh_links = self.render_ware.get_objects(rw4_base.MeshCompiledStateLink.type_code)
 
         material_index = 0
@@ -187,10 +229,7 @@ class RW4Importer:
 
         return 0.0
 
-    def process_skeleton(self):
-        if not self.settings.import_skeleton:
-            return
-
+    def import_skeleton(self):
         skins_inks = self.render_ware.get_objects(rw4_base.SkinsInK.type_code)
         if not skins_inks:
             return
@@ -203,41 +242,13 @@ class RW4Importer:
         bpy.context.scene.collection.objects.link(self.b_armature_object)
         bpy.context.view_layer.objects.active = self.b_armature_object
 
-        bones = self.skins_ink.skeleton.bones
-        for i, bone in enumerate(bones):
-            skin = self.skins_ink.animation_skin.data[i]
-            bone.matrix = Matrix(skin.matrix.data)
-            bone.translation = Vector(skin.translation)
-
-        branches = []  # used as an stack
-        previous = (Matrix.Identity(3), Vector())
-
+        self.bones = self.skins_ink.skeleton.bones
         pose_r = []
         pose_t = []
-
-        # # This is the same algorithm Spore uses
-        # for bone in bones:
-        #     p = previous[0]
-        #     m = bone.matrix
-        #     t = bone.translation
-        #
-        #     pose_t.append(p.transposed() @ -(m @ t) + previous[1])
-        #     pose_r.append((m.transposed() @ p).to_quaternion())
-        #
-        #     if bone.flags == rw4_base.SkeletonBone.TYPE_ROOT:
-        #         previous = (m, t)
-        #
-        #     elif bone.flags == rw4_base.SkeletonBone.TYPE_LEAF:
-        #         if branches:
-        #             previous = branches.pop()
-        #
-        #     elif bone.flags == rw4_base.SkeletonBone.TYPE_BRANCH:
-        #         branches.append(previous)
-        #         previous = (m, t)
-
-        for bone in bones:
-            m = bone.matrix
-            t = bone.translation
+        for i, bone in enumerate(self.bones):
+            skin = self.skins_ink.animation_skin.data[i]
+            bone.matrix = m = Matrix(skin.matrix.data)
+            bone.translation = t = Vector(skin.translation)
             inv_bind_pose = m.inverted().to_4x4()
             inv_bind_pose[0][3] = t[0]
             inv_bind_pose[1][3] = t[1]
@@ -259,12 +270,22 @@ class RW4Importer:
 
         bpy.ops.object.mode_set(mode='EDIT')
 
-        for i, (bone, rotation, translation) in enumerate(zip(bones, pose_r, pose_t)):
+        for i, (bone, rotation, translation) in enumerate(zip(self.bones, pose_r, pose_t)):
             b_bone = self.b_armature.edit_bones.new(get_name(bone.name))
             b_bone.use_local_location = True
 
             axis = Vector((0, 1, 0))
             roll = 0.0
+
+            # skin = self.skins_ink.animation_skin.data[i]
+            # m = Matrix(skin.matrix.data)
+            # t = Vector(skin.translation)
+            # inv_bind_pose = m.inverted().to_4x4()
+            # inv_bind_pose[0][3] = t[0]
+            # inv_bind_pose[1][3] = t[1]
+            # inv_bind_pose[2][3] = t[2]
+            #
+            # axis, roll = mat3_to_vec_roll(m.transposed().to_3x3())
 
             b_bone.head = translation
             b_bone.tail = axis * bone_length + b_bone.head
@@ -275,150 +296,224 @@ class RW4Importer:
 
         bpy.ops.object.mode_set(mode='OBJECT')
 
-    def set_bone_info(self):
-        if self.skins_ink is not None and self.skins_ink.animation_skin is not None:
-            base_rot = Matrix.Identity(3)
+    @staticmethod
+    def import_animation_channel(b_pose_bone, b_action, b_action_group, channel, index, channel_keyframes):
+        import_locrot = channel.keyframe_class in (rw4_base.LocRotScaleKeyframe, rw4_base.LocRotKeyframe)
+        import_scale = channel.keyframe_class == rw4_base.LocRotScaleKeyframe
 
-            for i, bone_pose in enumerate(self.skins_ink.animation_skin.data):
+        fcurves_qr = []
+        fcurves_vt = []
+        fcurves_vs = []
 
-                bone_info = RW4Importer.BoneInfo()
+        if import_locrot:
+            data_path = b_pose_bone.path_from_id('rotation_quaternion')
+            for i in range(4):
+                fcurve = b_action.fcurves.new(data_path, index=i)
+                fcurve.group = b_action_group
+                fcurves_qr.append(fcurve)
 
-                bone_info.abs_bind_pose = Matrix(bone_pose.abs_bind_pose.data)
-                bone_info.inv_bind_pose = (bone_info.abs_bind_pose.inverted() @ base_rot).to_quaternion()
+            data_path = b_pose_bone.path_from_id('location')
+            for i in range(3):
+                fcurve = b_action.fcurves.new(data_path, index=i)
+                fcurve.group = b_action_group
+                fcurves_vt.append(fcurve)
 
-                bone_info.inv_pose_translation = Vector(bone_pose.inv_pose_translation)
+        if import_scale:
+            data_path = b_pose_bone.path_from_id('scale')
+            for i in range(3):
+                fcurve = b_action.fcurves.new(data_path, index=i)
+                fcurve.group = b_action_group
+                fcurves_vs.append(fcurve)
 
-                self.bones_info.append(bone_info)
+        for k, kf in enumerate(channel.keyframes):
+            time = kf.time * rw4_base.KeyframeAnim.frames_per_second
+            bpy.context.scene.frame_set(time)  # So that parent.matrix works
 
-                if self.skins_ink.skeleton.bones[i].flags == 0:
-                    base_rot = bone_info.abs_bind_pose
+            transform = channel_keyframes[index][k]
 
-    def import_animation_rotation(self, b_pose_bone, b_action, b_action_group, channel, index):
-        data_path = b_pose_bone.path_from_id('rotation_quaternion')
-        qr_w = b_action.fcurves.new(data_path, index=0)
-        qr_x = b_action.fcurves.new(data_path, index=1)
-        qr_y = b_action.fcurves.new(data_path, index=2)
-        qr_z = b_action.fcurves.new(data_path, index=3)
+            if import_locrot:
+                # Rotation is in model space
+                qr = transform.to_quaternion()
+                if b_pose_bone.parent is not None:
+                    qr = b_pose_bone.parent.matrix.inverted().to_quaternion() @ qr
 
-        qr_w.group = b_action_group
-        qr_x.group = b_action_group
-        qr_y.group = b_action_group
-        qr_z.group = b_action_group
+                for i in range(4):
+                    fcurves_qr[i].keyframe_points.insert(time, qr[i])
 
-        for kf in channel.keyframes:
-            qr = Quaternion((kf.rot[3], kf.rot[0], kf.rot[1], kf.rot[2])) @ self.bones_info[index].inv_bind_pose
+                # The position, in world coordinates relative to origin
+                vt = transform @ b_pose_bone.bone.head_local
 
-            if b_pose_bone.parent is not None:
-                parent_qr = b_pose_bone.parent.rotation_quaternion
-                qr = qr @ parent_qr.inverted()
+                # Convert from WORLD position into LOCAL position
+                # This only works because we import our bones with no rotation; for exporting this will require more
+                if b_pose_bone.parent is not None:
+                    parent_matrix = b_pose_bone.parent.matrix
+                    parent_transform = (parent_matrix @ b_pose_bone.parent.bone.matrix_local.inverted())
+                    # The position, in world coordinates relative to posed position
+                    world_pos_relative = vt - (parent_transform @ b_pose_bone.bone.head_local)
+                    vt = parent_matrix.to_3x3().inverted() @ world_pos_relative
 
-            qr_w.keyframe_points.insert(kf.time*rw4_base.KeyframeAnim.frames_per_second, qr[0])
-            qr_x.keyframe_points.insert(kf.time*rw4_base.KeyframeAnim.frames_per_second, qr[1])
-            qr_y.keyframe_points.insert(kf.time*rw4_base.KeyframeAnim.frames_per_second, qr[2])
-            qr_z.keyframe_points.insert(kf.time*rw4_base.KeyframeAnim.frames_per_second, qr[3])
+                for i in range(3):
+                    fcurves_vt[i].keyframe_points.insert(time, vt[i])
 
-    def import_animation_location(self, b_pose_bone, b_action, b_action_group, channel, index):
-        data_path = b_pose_bone.path_from_id('location')
-        vt_x = b_action.fcurves.new(data_path, index=0)
-        vt_y = b_action.fcurves.new(data_path, index=1)
-        vt_z = b_action.fcurves.new(data_path, index=2)
+                if import_scale:
+                    # It's in the transform coordinate system; in Blender it's in the bone.matrix
+                    # Since we use an Identity rotation for the bone matrix, it's the same
+                    vs = transform.to_scale()
 
-        vt_x.group = b_action_group
-        vt_y.group = b_action_group
-        vt_z.group = b_action_group
+                    for i in range(3):
+                        fcurves_vs[i].keyframe_points.insert(time, vs[i])
 
-        for kf in channel.keyframes:
-            vt = Vector((vt_x, vt_y, vt_z))
+    def process_animation(self, animation):
+        """
+        Process all the keyframes of the animation, computing the final transformation matrices used in the shader.
+        The matrices are the model space transformation from the base pose to the animated pose.
+        Returns a list of channels, where every channel is a list of Matrix4 keyframes with the transformation.
+        :param animation:
+        :return: [[channel0_keyframe0, channel0_keyframe1,...], [channel1_keyframe0,...],...]
+        """
+        # 1. Classify all keyframes by their time
+        # [(time1, pose_bones), (time2, pose_bones), etc], one keyframe per channel per time
+        keyframe_poses = OrderedDict()
+        for c, channel in enumerate(animation.channels):
+            for kf in channel.keyframes:
+                if kf.time not in keyframe_poses:
+                    keyframe_poses[kf.time] = [None] * len(animation.channels)
 
-            if b_pose_bone.parent is not None:
-                vt = vt + self.bones_info[index].inv_pose_translation
+                if channel.keyframe_class == rw4_base.LocRotScaleKeyframe or \
+                        channel.keyframe_class == rw4_base.LocRotKeyframe:
+                    r = Quaternion((kf.rot[3], kf.rot[0], kf.rot[1], kf.rot[2]))
+                    t = Vector(kf.loc)
+                else:
+                    r = Quaternion()
+                    t = Vector((0, 0, 0))
 
-            vt_x.keyframe_points.insert(kf.time*rw4_base.KeyframeAnim.frames_per_second, vt[0])
-            vt_y.keyframe_points.insert(kf.time*rw4_base.KeyframeAnim.frames_per_second, vt[1])
-            vt_z.keyframe_points.insert(kf.time*rw4_base.KeyframeAnim.frames_per_second, vt[2])
+                if channel.keyframe_class == rw4_base.LocRotScaleKeyframe:
+                    s = Vector(kf.scale)
+                else:
+                    s = Vector((1.0, 1.0, 1.0))
 
-    def get_bone_index(self, name):
-        if self.skins_ink is not None and self.skins_ink.skeleton is not None:
-            for i in range(len(self.skins_ink.skeleton.bones)):
-                if self.skins_ink.skeleton.bones[i].name == name:
-                    return i
-        return -1
+                keyframe_poses[kf.time][c] = PoseBone(r=r, t=t, s=s)
 
-    def process_animation(self, animation, anim_id):
-        """ Imports an animation and returns the Blender Action"""
+        # 2. Process the transformation matrix
+        # This is the same algorithm used by Spore; the result is what is sent to the DirectX shader
+        # These are the transforms in model space from the rest pose to the animated pose
+        # This assumes that parents will always be processed before their children
+        # List of channels, which are list of PoseBone keyframes containing the transformation
+        channel_keyframes = [[] for _ in animation.channels]
 
-        b_action = bpy.data.actions.new(get_name(anim_id))
-        self.b_animation_actions.append(b_action)
+        # Process for every channel for every time
+        # We must do it even if the channel didn't have a keyframe there, because it might be used by other channels
+        for time, pose_bones in keyframe_poses.items():
+            branches = []  # Used as an stack
+            previous_rot = Matrix.Identity(3)
+            previous_loc = Vector((0, 0, 0))
+            previous_scale = Vector((1.0, 1.0, 1.0))  # inverse scale
 
+            for c, (pose_bone, bone) in enumerate(zip(pose_bones, self.bones)):
+                skip_bone = pose_bone is None
+                if skip_bone:
+                    pose_bone = interpolate_pose(time, c, keyframe_poses)
+
+                # Apply the scale
+                scale_matrix = Matrix.Diagonal((1.0 / previous_scale.x, 1.0 / previous_scale.y, 1.0 / previous_scale.z))
+                m = scale_matrix @ Matrix.Diagonal(pose_bone.s)
+                # Apply the rotation
+                m = previous_rot @ (m @ pose_bone.r.to_matrix())
+
+                t = pose_bone.t @ previous_rot.transposed() + previous_loc
+
+                if not skip_bone:
+                    dst_r = m @ bone.matrix.inverted()
+                    dst_t = t + (m @ bone.translation)
+                    # for i in range(3):
+                    #     print(f"skin_bones_data += struct.pack(
+                    #     'ffff', {dst_r[i][0]}, {dst_r[i][1]}, {dst_r[i][2]}, {dst_t[i]})")
+                    channel_keyframes[c].append(Matrix.Translation(dst_t) @ dst_r.to_4x4())
+
+                if bone.flags == rw4_base.SkeletonBone.TYPE_ROOT:
+                    previous_rot = m
+                    previous_loc = t
+                    previous_scale = pose_bone.s
+
+                elif bone.flags == rw4_base.SkeletonBone.TYPE_LEAF:
+                    if branches:
+                        previous_rot, previous_loc, previous_scale = branches.pop()
+
+                elif bone.flags == rw4_base.SkeletonBone.TYPE_BRANCH:
+                    branches.append((previous_rot, previous_loc, previous_scale))
+                    previous_rot = m
+                    previous_loc = t
+                    previous_scale = pose_bone.s
+
+        return channel_keyframes
+
+    def import_animation(self, animation, b_action):
+        bpy.ops.object.mode_set(mode='POSE')
+
+        self.b_armature_object.animation_data_create()
         self.b_armature_object.animation_data.action = b_action
 
+        bpy.ops.object.mode_set(mode='POSE')
+        bpy.context.scene.frame_set(0)
+        for bone in self.b_armature.bones:
+            bone.select = True
+        bpy.ops.pose.transforms_clear()
+
+        channel_keyframes = self.process_animation(animation)
+
         for c, channel in enumerate(animation.channels):
-            bone_index = self.get_bone_index(channel.channel_id)
-
-            b_pose_bone = self.b_armature_object.pose.bones[bone_index]
-
+            b_pose_bone = self.b_armature_object.pose.bones[c]
             b_action_group = b_action.groups.new(b_pose_bone.name)
 
-            if channel.keyframe_class == rw4_base.LocRotScaleKeyframe or \
-                    channel.keyframe_class == rw4_base.LocRotKeyframe:
-                self.import_animation_rotation(
-                    b_pose_bone=b_pose_bone,
-                    b_action=b_action,
-                    b_action_group=b_action_group,
-                    channel=channel,
-                    index=bone_index
-                    )
+            RW4Importer.import_animation_channel(
+                b_pose_bone,
+                b_action,
+                b_action_group,
+                channel,
+                c,
+                channel_keyframes)
+
+        bpy.ops.object.mode_set(mode='OBJECT')
 
         return b_action
 
-    def process_animations(self):
-        if not self.settings.import_movements:
-            return
+    def import_animations(self):
         if self.b_armature_object is None:
             return
 
         anim_objects = self.render_ware.get_objects(rw4_base.Animations.type_code)
-
-        # Animations
-        if anim_objects:
-
-            bpy.context.view_layer.objects.active = self.b_armature_object
-
-            self.set_bone_info()
-
-            animations = anim_objects[0].animations
-
-            bpy.ops.object.mode_set(mode='POSE')
-            self.b_armature_object.animation_data_create()
-
-            for anim_id in animations.keys():
-
-                animation = animations[anim_id]
-
-                self.process_animation(animation, anim_id)
-
-            bpy.ops.object.mode_set(mode='OBJECT')
-
-        # Morph handles
         handle_objects = self.render_ware.get_objects(rw4_base.MorphHandle.type_code)
 
-        if handle_objects:
-            bpy.ops.object.mode_set(mode='POSE')
+        # First create all actions
+        if not anim_objects and not handle_objects:
+            return
 
-            # Check if we have created the animation data yet
-            if len(anim_objects) == 0:
-                self.b_armature_object.animation_data_create()
-                self.set_bone_info()
+        bpy.context.view_layer.objects.active = self.b_armature_object
+        self.b_armature_object.animation_data_create()
+        animations = anim_objects[0].animations
 
-            for handle in handle_objects:
-                b_action = self.process_animation(handle.animation, handle.handle_id)
+        for anim_id in animations.keys():
+            b_action = bpy.data.actions.new(get_name(anim_id))
+            b_action.use_fake_user = True
+            self.b_animation_actions.append(b_action)
 
-                b_action.rw4.is_morph_handle = True
-                b_action.rw4.initial_pos = handle.start_pos
-                b_action.rw4.final_pos = handle.end_pos
-                b_action.rw4.default_frame = int(handle.default_time * 24)
+        for handle in handle_objects:
+            b_action = bpy.data.actions.new(get_name(handle.handle_id))
+            b_action.use_fake_user = True
+            self.b_animation_actions.append(b_action)
 
-            bpy.ops.object.mode_set(mode='OBJECT')
+            b_action.rw4.is_morph_handle = True
+            b_action.rw4.initial_pos = handle.start_pos
+            b_action.rw4.final_pos = handle.end_pos
+            b_action.rw4.default_frame = int(handle.default_time * 24)
+
+        for i, anim in enumerate(animations.values()):
+            self.import_animation(anim, self.b_animation_actions[i])
+
+        for i, handle in enumerate(handle_objects):
+            self.import_animation(handle.anim, self.b_animation_actions[i + len(animations)])
+
+        bpy.context.scene.frame_set(0)
 
 
 def import_rw4(file, settings):
