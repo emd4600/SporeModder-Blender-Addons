@@ -14,7 +14,7 @@ from . import rw4_enums
 
 
 class ModelError(Exception):
-    def __init__(self, message, cause_object):
+    def __init__(self, message, cause_object=None):
         super().__init__(message)
         self.cause_object = cause_object
 
@@ -193,6 +193,11 @@ class RenderWare4:
             raise NameError("Unsupported get_index for sectionType %x" % section_type)
 
     def create_object(self, type_code):
+        """
+        Creates an instance of an object, whose type depends on the given type code.
+        :param type_code:
+        :return:
+        """
         for supportedObject in RWObject.__subclasses__():
             if supportedObject.type_code == type_code:
                 obj = supportedObject(self)
@@ -202,11 +207,21 @@ class RenderWare4:
         return None
 
     def add_object(self, obj):
+        """
+        Adds an object, which will be written into the RenderWare4 data.
+        :param obj:
+        :return:
+        """
         self.objects.append(obj)
 
     def add_sub_reference(self, rw_object, offset):
+        """
+        Adds a subreference that is 'offset' bytes ahead from the object data.
+        :returns: The int that is used to index this sub reference.
+        """
         reference = SubReference(rw_object=rw_object, offset=offset)
         self.header.section_sub_references.sub_references.append(reference)
+        return (len(self.header.section_sub_references.sub_references) - 1) | (INDEX_SUB_REFERENCE << 0x16)
 
     def read(self, file: FileReader):
 
@@ -318,7 +333,8 @@ class RenderWare4:
 
 
 class RWSectionInfo:
-    def __init__(self, render_ware, p_data=0, field_04=0, data_size=0, alignment=0, type_code_index=0, type_code=0):
+    def __init__(self, render_ware: RenderWare4, p_data=0, field_04=0, data_size=0, alignment=0, type_code_index=0,
+                 type_code=0):
         self.render_ware = render_ware
         self.p_data = p_data  # 00h
         self.field_04 = field_04
@@ -348,7 +364,7 @@ class RWObject:
     type_code = 0
     alignment = 4
 
-    def __init__(self, render_ware):
+    def __init__(self, render_ware: RenderWare4):
         self.render_ware = render_ware
         self.section_info = None
 
@@ -362,7 +378,7 @@ class RWObject:
 class SectionManifest(RWObject):
     type_code = 0x10004
 
-    def __init__(self, render_ware, field_0=4, field_4=12):
+    def __init__(self, render_ware: RenderWare4, field_0=4, field_4=12):
         super().__init__(render_ware)
         # all offsets are relative to the beginning of this section
         self.field_0 = field_0
@@ -392,7 +408,7 @@ class SectionManifest(RWObject):
 class SectionTypes(RWObject):
     type_code = 0x10005
 
-    def __init__(self, render_ware, field_4=12):
+    def __init__(self, render_ware: RenderWare4, field_4=12):
         super().__init__(render_ware)
         self.field_4 = field_4
         self.type_codes = []
@@ -415,7 +431,7 @@ class SectionTypes(RWObject):
 class SectionExternalArenas(RWObject):
     type_code = 0x10006
 
-    def __init__(self, render_ware,
+    def __init__(self, render_ware: RenderWare4,
                  field_0=3, field_4=0x18, field_8=1, field_c=0xffb00000,
                  field_10=1, field_14=0, field_18=0, field_1c=0):
         super().__init__(render_ware)
@@ -452,7 +468,7 @@ class SectionExternalArenas(RWObject):
 class SectionSubReferences(RWObject):
     type_code = 0x10007
 
-    def __init__(self, render_ware, sub_references=None, field_4=0, field_8=0, p_sub_reference_offsets=0):
+    def __init__(self, render_ware: RenderWare4, sub_references=None, field_4=0, field_8=0, p_sub_reference_offsets=0):
         super().__init__(render_ware)
         self.sub_references = sub_references
         if self.sub_references is None:
@@ -505,7 +521,7 @@ class SectionSubReferences(RWObject):
 class SectionAtoms(RWObject):
     type_code = 0x10008
 
-    def __init__(self, render_ware, field_0=0, field_4=0):
+    def __init__(self, render_ware: RenderWare4, field_0=0, field_4=0):
         super().__init__(render_ware)
         self.field_0 = field_0
         self.field_4 = field_4
@@ -523,7 +539,7 @@ class BaseResource(RWObject):
     type_code = 0x10030
     alignment = 4
 
-    def __init__(self, render_ware, write_method=None, data=None, owner=None):
+    def __init__(self, render_ware: RenderWare4, write_method=None, data=None, owner=None):
         super().__init__(render_ware)
         self.write_method = write_method
         self.data = data
@@ -547,7 +563,7 @@ class Raster(RWObject):
     type_code = 0x20003
     alignment = 4
 
-    def __init__(self, render_ware):
+    def __init__(self, render_ware: RenderWare4):
         super().__init__(render_ware)
         self.texture_format = 0
         self.texture_flags = 8  # 0x200 -> D3DUSAGE_AUTOGENMIPMAP, 0x10 -> D3DUSAGE_DYNAMIC
@@ -601,7 +617,7 @@ class VertexDescription(RWObject):
     type_code = 0x20004
     alignment = 4
 
-    def __init__(self, render_ware):
+    def __init__(self, render_ware: RenderWare4):
         super().__init__(render_ware)
         self.field_0 = 0
         self.field_4 = 0
@@ -714,7 +730,7 @@ class IndexBuffer(RWObject):
     type_code = 0x20007
     alignment = 4
 
-    def __init__(self, render_ware,
+    def __init__(self, render_ware: RenderWare4,
                  start_index=0, primitive_count=0, usage=8, index_format=101, primitive_type=4, index_data=None):
         super().__init__(render_ware)
         self.dx_index_buffer = 0  # IDirect3DIndexBuffer9*, not used in file
@@ -763,7 +779,7 @@ class SkinMatrixBuffer(RWObject):
     type_code = 0x7000f
     alignment = 16
 
-    def __init__(self, render_ware):
+    def __init__(self, render_ware: RenderWare4):
         super().__init__(render_ware)
         self.p_matrix_data = 0  # in file, offset, in the game a pointer to it
         self.data = []
@@ -828,7 +844,7 @@ class AnimationSkin(RWObject):
 
             file.write_int(0)
 
-    def __init__(self, render_ware):
+    def __init__(self, render_ware: RenderWare4):
         super().__init__(render_ware)
         self.p_matrix_data = 0  # in file, offset, in the game a pointer to it
         self.data = []
@@ -861,7 +877,7 @@ class Mesh(RWObject):
     type_code = 0x20009
     alignment = 4
 
-    def __init__(self, render_ware, field_0=0, primitive_type=0, index_buffer=None, triangle_count=0,
+    def __init__(self, render_ware: RenderWare4, field_0=0, primitive_type=0, index_buffer=None, triangle_count=0,
                  first_index=0, primitive_count=0, first_vertex=0, vertex_count=0):
         super().__init__(render_ware)
         self.field_0 = field_0
@@ -907,7 +923,7 @@ class MeshCompiledStateLink(RWObject):
     type_code = 0x2001a
     alignment = 4
 
-    def __init__(self, render_ware, mesh=None):
+    def __init__(self, render_ware: RenderWare4, mesh=None):
         super().__init__(render_ware)
         self.mesh = mesh
         self.compiled_states = []
@@ -931,7 +947,7 @@ class CompiledState(RWObject):
     type_code = 0x2000b
     alignment = 16
 
-    def __init__(self, render_ware):
+    def __init__(self, render_ware: RenderWare4):
         super().__init__(render_ware)
         self.render_ware = render_ware
         self.data = bytearray()
@@ -949,7 +965,7 @@ class SkinsInK(RWObject):
     type_code = 0x7000c
     alignment = 4
 
-    def __init__(self, render_ware, field_0=None, skin_matrix_buffer=None, skeleton=None, animation_skin=None):
+    def __init__(self, render_ware: RenderWare4, field_0=None, skin_matrix_buffer=None, skeleton=None, animation_skin=None):
         super().__init__(render_ware)
         self.field_0 = field_0
         self.field_4 = 0  # this is a pointer to a function but it always gets replaced by Spore
@@ -991,7 +1007,7 @@ class Skeleton(RWObject):
     type_code = 0x70002
     alignment = 4
 
-    def __init__(self, render_ware, skeleton_id=0):
+    def __init__(self, render_ware: RenderWare4, skeleton_id=0):
         super().__init__(render_ware)
         self.bones = []
         self.skeleton_id = skeleton_id
@@ -1050,7 +1066,7 @@ class BoundingBox(RWObject):
     type_code = 0x80005
     alignment = 16
 
-    def __init__(self, render_ware, bound_box=None):
+    def __init__(self, render_ware: RenderWare4, bound_box=None):
         super().__init__(render_ware)
         self.bound_box = bound_box
         self.field_0C = 0
@@ -1081,7 +1097,7 @@ class MorphHandle(RWObject):
     type_code = 0xff0000
     alignment = 4
 
-    def __init__(self, render_ware, handle_id=0, default_time=0.0, animation=None):
+    def __init__(self, render_ware: RenderWare4, handle_id=0, default_time=0.0, animation=None):
         super().__init__(render_ware)
         self.handle_id = handle_id
         self.field_4 = 0
@@ -1119,7 +1135,7 @@ class TriangleKDTreeProcedural(RWObject):
     type_code = 0x80003
     alignment = 16
 
-    def __init__(self, render_ware):
+    def __init__(self, render_ware: RenderWare4):
         super().__init__(render_ware)
         self.bound_box = None
         self.triangles = []
@@ -1287,7 +1303,7 @@ class Animations(RWObject):
     type_code = 0xff0001
     alignment = 4
 
-    def __init__(self, render_ware):
+    def __init__(self, render_ware: RenderWare4):
         super().__init__(render_ware)
         self.animations = {}
 
@@ -1410,6 +1426,23 @@ class LocRotKeyframe(Keyframe):
         self.loc = offset
 
 
+class BlendFactorKeyframe(Keyframe):
+    components = 0x100
+    size = 8
+
+    def __init__(self):
+        super().__init__()
+        self.factor = 0.0
+
+    def read(self, file: FileReader):
+        self.factor = file.read_float()
+        self.time = file.read_float()
+
+    def write(self, file: FileWriter):
+        file.write_float(self.factor)
+        file.write_float(self.time)
+
+
 class AnimationChannel:
     def __init__(self, keyframe_class=None):
         self.channel_id = 0
@@ -1443,7 +1476,7 @@ class KeyframeAnim(RWObject):
 
     frames_per_second = 24
 
-    def __init__(self, render_ware, skeleton_id=0, length=0.0):
+    def __init__(self, render_ware: RenderWare4, skeleton_id=0, length=0.0):
         super().__init__(render_ware)
         self.skeleton_id = skeleton_id
         self.field_C = 0
@@ -1593,6 +1626,88 @@ class KeyframeAnim(RWObject):
             write_offset(p_channel_info + 12 * i, channel_data_offsets[i])
 
         file.seek(final_position)
+
+
+class BlendShape(RWObject):
+    type_code = 0xff0002
+    alignment = 4
+
+    def __init__(self, render_ware: RenderWare4, object_id=-1, shape_ids=None):
+        super().__init__(render_ware)
+        self.id = object_id
+        self.shape_ids = [] if shape_ids is None else shape_ids
+
+    def read(self, file: FileReader):
+        file.read_int()  # gets replaced by code
+        file.read_int()  # pointer to function, gets replaced
+
+        file.read_int()  # index to subreference in this same object
+        shape_count = file.read_int()
+        file.read_int()  # index to subreference in this same object
+        file.read_int()  # shape count again
+        self.id = file.read_uint()
+
+        # This is a buffer for the shape times, gets replaced by code
+        file.skip_bytes(shape_count * 4)
+        self.shape_ids.extend(file.unpack(f'<{shape_count}I'))
+
+    def write(self, file: FileWriter):
+        file.write_int(0)
+        file.write_int(0)
+
+        file.write_int(self.render_ware.add_sub_reference(self, 0x1C))
+        file.write_int(len(self.shape_ids))
+        file.write_int(self.render_ware.add_sub_reference(self, 0x1C + len(self.shape_ids) * 4))
+        file.write_int(len(self.shape_ids))
+        file.write_uint(self.id)
+
+        file.pack(f'{len(self.shape_ids)}x')
+        file.pack(f'{len(self.shape_ids)}I', *self.shape_ids)
+
+
+class BlendShapeBuffer(RWObject):
+    type_code = 0x200af
+    alignment = 16
+
+    INDEX_POSITION = 0
+    INDEX_NORMAL = 1
+    INDEX_TANGENT = 2
+    INDEX_TEXCOORD = 3
+    INDEX_BLENDINDICES = 9
+    INDEX_BLENDWEIGHTS = 10
+
+    def __init__(self, render_ware: RenderWare4, shape_count=0, vertex_count=0):
+        super().__init__(render_ware)
+        self.shape_count = shape_count
+        self.vertex_count = vertex_count
+        self.offsets = []
+        self.data = None
+
+    def read(self, file: FileReader):
+        if file.read_int() != 1:
+            raise IOError("Unsupported BlendShadeBuffer type")
+
+        offsets = file.unpack('<11I')
+        # The offsets must be relative to self.data
+        for offset in offsets:
+            self.offsets.append(-1 if offset == 0 else offset - 64)
+
+        self.shape_count = file.read_int()
+        self.vertex_count = file.read_int()
+        # ??
+        file.skip_bytes(8)
+
+        self.data = file.read(self.section_info.data_size - 64)
+
+    def write(self, file: FileWriter):
+        file.write_int(1)
+        for offset in self.offsets:
+            file.write_uint(offset + 64)
+
+        file.write_int(self.shape_count)
+        file.write_int(self.vertex_count)
+        file.write_int(0)
+        file.write_int(self.shape_count)
 
 
 class DDSTexture:

@@ -6,6 +6,7 @@ from .file_io import FileReader, ArrayFileReader, get_name
 from mathutils import Matrix, Quaternion, Vector
 import math
 import bpy
+import bmesh
 from collections import OrderedDict
 
 
@@ -60,7 +61,7 @@ def interpolate_pose(animation, time, channel_index, keyframe_poses) -> PoseBone
     """Returns the interpolated pose at 'time' for the given channel."""
     # 1. Get the floor keyframe
     floor_kf = None  # (time, pose)
-    for kf_time, pose_bones in keyframe_poses:
+    for kf_time, pose_bones in keyframe_poses.items():
         if kf_time < time:
             floor_kf = (kf_time, pose_bones[channel_index])
         else:
@@ -72,7 +73,7 @@ def interpolate_pose(animation, time, channel_index, keyframe_poses) -> PoseBone
 
     # 2. Get the ceil keyframe
     ceil_kf = None  # (time, pose)
-    for kf_time, pose_bones in keyframe_poses:
+    for kf_time, pose_bones in keyframe_poses.items():
         if kf_time > time:
             ceil_kf = (kf_time, pose_bones[channel_index])
             break
@@ -87,9 +88,9 @@ def interpolate_pose(animation, time, channel_index, keyframe_poses) -> PoseBone
     ceil_factor = ceil_kf[0] / animation.length
     factor = time / animation.length
     lerp_factor = (factor - floor_factor) / (ceil_factor - floor_factor)
-    r = floor_kf[1].r.slerp(ceil_factor[1].r, lerp_factor)
-    t = floor_kf[1].t.lerp(ceil_factor[1].t, lerp_factor)
-    s = floor_kf[1].s.lerp(ceil_factor[1].s, lerp_factor)
+    r = floor_kf[1].r.slerp(ceil_kf[1].r, lerp_factor)
+    t = floor_kf[1].t.lerp(ceil_kf[1].t, lerp_factor)
+    s = floor_kf[1].s.lerp(ceil_kf[1].s, lerp_factor)
     return PoseBone(r=r, t=t, s=s)
 
 
@@ -126,6 +127,163 @@ class RW4Importer:
         if self.settings.import_animations:
             self.import_animations()
 
+    def process_index_buffer(self, ibuffer, b_mesh):
+        """Adds the triangles defined by the given IndexBuffer to the mesh."""
+        indices = ibuffer.process_data(self.file)
+
+        if ibuffer.primitive_type != rw4_enums.D3DPT_TRIANGLELIST:
+            raise NameError(f"Unsupported primitive type: {ibuffer.primitive_type}")
+
+        tri_count = len(indices) // 3
+        b_mesh.loops.add(len(indices))
+        b_mesh.polygons.add(tri_count)
+
+        b_mesh.loops.foreach_set("vertex_index", tuple(indices))
+        b_mesh.polygons.foreach_set("loop_start", [i * 3 for i in range(tri_count)])
+        b_mesh.polygons.foreach_set("loop_total", [3] * tri_count)
+        b_mesh.polygons.foreach_set("use_smooth", [True] * tri_count)
+
+    def import_blend_shape_mesh(self, mesh_link):
+        buffers = self.render_ware.get_objects(rw4_base.BlendShapeBuffer.type_code)
+        if len(buffers) != 1:
+            raise rw4_base.ModelError("Malformed model: missing BlendShapeBuffer")
+        buffer = buffers[0]
+
+        blend_shapes = self.render_ware.get_objects(rw4_base.BlendShape.type_code)
+        if len(blend_shapes) != 1:
+            raise rw4_base.ModelError("Malformed model: missing BlendShape")
+
+        if buffer.offsets[rw4_base.BlendShapeBuffer.INDEX_POSITION] == -1:
+            raise rw4_base.ModelError("Malformed model: BlendShapeBuffer does not have POSITION")
+
+        name = get_name(blend_shapes[0].id)
+        b_mesh = bpy.data.meshes.new(name)
+        b_object = bpy.data.objects.new(name, b_mesh)
+
+        bpy.context.scene.collection.objects.link(b_object)
+        bpy.context.view_layer.objects.active = b_object
+
+        self.b_meshes.append(b_mesh)
+        self.b_mesh_objects.append(b_object)
+
+        self.meshes_dict[None] = b_object  # For no vertex buffer
+
+        stream = ArrayFileReader(buffer.data)
+        vertex_count = buffer.vertex_count
+
+        stream.seek(buffer.offsets[rw4_base.BlendShapeBuffer.INDEX_POSITION])
+        b_mesh.vertices.add(vertex_count)
+        for i in range(vertex_count):
+            b_mesh.vertices[i].co = stream.unpack('<fff')
+            stream.skip_bytes(4)
+
+        self.process_index_buffer(mesh_link.mesh.index_buffer, b_mesh)
+        b_mesh.update(calc_edges=True)
+
+        for i, shape_id in enumerate(blend_shapes[0].shape_ids):
+            shape_key = b_object.shape_key_add(name='Basis' if shape_id == 0 else get_name(shape_id))
+            shape_key.interpolation = 'KEY_LINEAR'
+
+            stream.seek(buffer.offsets[rw4_base.BlendShapeBuffer.INDEX_POSITION] + 16*i*vertex_count)
+            for v in range(vertex_count):
+                shape_key.data[v].co = Vector(stream.unpack('<fff')) + b_mesh.vertices[v].co
+                stream.skip_bytes(4)
+
+        b_mesh.shape_keys.use_relative = True
+
+        if buffer.offsets[rw4_base.BlendShapeBuffer.INDEX_TEXCOORD] != -1:
+            stream.seek(buffer.offsets[rw4_base.BlendShapeBuffer.INDEX_TEXCOORD])
+            texcoords = [None] * vertex_count
+            for i in range(vertex_count):
+                texcoords[i] = stream.unpack('<ff')
+                stream.skip_bytes(8)
+
+            uv_layer = b_mesh.uv_layers.new()
+            for loop in b_mesh.loops:
+                uv = texcoords[loop.vertex_index]
+                uv_layer.data[loop.index].uv = (uv[0], -uv[1])
+
+        # Configure skeleton if any
+        if self.b_armature is not None and buffer.offsets[rw4_base.BlendShapeBuffer.INDEX_BLENDINDICES] != -1:
+            blend_indices = [-1] * vertex_count
+            blend_weights = [0.0] * vertex_count
+            stream.seek(buffer.offsets[rw4_base.BlendShapeBuffer.INDEX_BLENDINDICES])
+            for i in range(vertex_count):
+                blend_indices[i] = stream.unpack('<HHHH')
+
+            stream.seek(buffer.offsets[rw4_base.BlendShapeBuffer.INDEX_BLENDWEIGHTS])
+            for i in range(vertex_count):
+                blend_weights[i] = stream.unpack('<ffff')
+
+            for bbone in self.b_armature.bones:
+                b_object.vertex_groups.new(name=bbone.name)
+
+            for v, (blend_index, blend_weight) in enumerate(zip(blend_indices, blend_weights)):
+                for i in range(4):
+                    if blend_weight[i] != 0:
+                        b_object.vertex_groups[blend_index[i] // 3].add(
+                            [v], blend_weight[i] / 255.0, 'REPLACE')
+
+            b_modifier = b_object.modifiers.new(f"Skeleton: {self.b_armature.name}", 'ARMATURE')
+            b_modifier.object = self.b_armature_object
+            b_modifier.use_vertex_groups = True
+
+        return b_mesh
+
+    def import_vertex_buffer_mesh(self, mesh_link):
+        vbuffer = mesh_link.mesh.vertex_buffers[0]
+        name = "Model-%d" % (self.render_ware.get_index(vbuffer))
+        b_mesh = bpy.data.meshes.new(name)
+        b_object = bpy.data.objects.new(name, b_mesh)
+
+        bpy.context.scene.collection.objects.link(b_object)
+        bpy.context.view_layer.objects.active = b_object
+
+        self.b_meshes.append(b_mesh)
+        self.b_mesh_objects.append(b_object)
+
+        self.meshes_dict[vbuffer] = b_object
+
+        # Add all vertices and triangles
+        vertices = vbuffer.process_data(self.file)
+        b_mesh.vertices.add(len(vertices))
+        for i, v in enumerate(vertices):
+            b_mesh.vertices[i].co = v.position
+
+        self.process_index_buffer(mesh_link.mesh.index_buffer, b_mesh)
+
+        if vbuffer.has_element(rw4_enums.RWDECL_TEXCOORD0):
+            uv_layer = b_mesh.uv_layers.new()
+            for loop in b_mesh.loops:
+                uv = vertices[loop.vertex_index].texcoord0
+                uv_layer.data[loop.index].uv = (uv[0], -uv[1])
+
+        # TODO: vertex colors?
+
+        b_mesh.update(calc_edges=True)
+
+        # Apply the normals after updating
+        if vbuffer.has_element(rw4_enums.RWDECL_NORMAL):
+            for i, v in enumerate(vertices):
+                b_mesh.vertices[i].normal = rw4_enums.unpack_normals(v.normal)
+
+        # Configure skeleton if any
+        if self.b_armature is not None:
+            for bbone in self.b_armature.bones:
+                b_object.vertex_groups.new(name=bbone.name)
+
+            for v, vertex in enumerate(vertices):
+                for i in range(4):
+                    if vertex.blendWeights[i] != 0:
+                        b_object.vertex_groups[vertex.blendIndices[i] // 3].add(
+                            [v], vertex.blendWeights[i] / 255.0, 'REPLACE')
+
+            b_modifier = b_object.modifiers.new(f"Skeleton: {self.b_armature.name}", 'ARMATURE')
+            b_modifier.object = self.b_armature_object
+            b_modifier.use_vertex_groups = True
+
+        return b_mesh
+
     def import_meshes(self):
         mesh_links = self.render_ware.get_objects(rw4_base.MeshCompiledStateLink.type_code)
 
@@ -137,70 +295,10 @@ class RW4Importer:
 
             if b_object is not None:
                 b_mesh = b_object.data
+            elif vbuffer is None:
+                b_mesh = self.import_blend_shape_mesh(mesh_link)
             else:
-                name = "Model-%d" % (self.render_ware.get_index(vbuffer))
-                b_mesh = bpy.data.meshes.new(name)
-                b_object = bpy.data.objects.new(name, b_mesh)
-
-                bpy.context.scene.collection.objects.link(b_object)
-                bpy.context.view_layer.objects.active = b_object
-
-                self.b_meshes.append(b_mesh)
-                self.b_mesh_objects.append(b_object)
-
-                self.meshes_dict[vbuffer] = b_object
-
-                # Add all vertices and triangles (only if we haven't added them before)
-
-                ibuffer = mesh_link.mesh.index_buffer
-                vertices = vbuffer.process_data(self.file)
-                indices = ibuffer.process_data(self.file)
-
-                if ibuffer.primitive_type != rw4_enums.D3DPT_TRIANGLELIST:
-                    raise NameError(f"Unsupported primitive type: {ibuffer.primitive_type}")
-
-                b_mesh.vertices.add(len(vertices))
-                for i, v in enumerate(vertices):
-                    b_mesh.vertices[i].co = v.position
-
-                tri_count = len(indices) // 3
-                b_mesh.loops.add(len(indices))
-                b_mesh.polygons.add(tri_count)
-
-                b_mesh.loops.foreach_set("vertex_index", tuple(indices))
-                b_mesh.polygons.foreach_set("loop_start", [i * 3 for i in range(tri_count)])
-                b_mesh.polygons.foreach_set("loop_total", [3] * tri_count)
-                b_mesh.polygons.foreach_set("use_smooth", [True] * tri_count)
-
-                if vbuffer.has_element(rw4_enums.RWDECL_TEXCOORD0):
-                    uv_layer = b_mesh.uv_layers.new()
-                    for loop in b_mesh.loops:
-                        uv = vertices[loop.vertex_index].texcoord0
-                        uv_layer.data[loop.index].uv = (uv[0], -uv[1])
-
-                # TODO: vertex colors?
-
-                b_mesh.update(calc_edges=True)
-
-                # Apply the normals after updating
-                if vbuffer.has_element(rw4_enums.RWDECL_NORMAL):
-                    for i, v in enumerate(vertices):
-                        b_mesh.vertices[i].normal = rw4_enums.unpack_normals(v.normal)
-
-                # Configure skeleton if any
-                if self.b_armature is not None:
-                    for bbone in self.b_armature.bones:
-                        b_object.vertex_groups.new(name=bbone.name)
-
-                    for v, vertex in enumerate(vertices):
-                        for i in range(4):
-                            if vertex.blendWeights[i] != 0:
-                                b_object.vertex_groups[vertex.blendIndices[i] // 3].add(
-                                    [v], vertex.blendWeights[i] / 255.0, 'REPLACE')
-
-                    b_modifier = b_object.modifiers.new(f"Skeleton: {self.b_armature.name}", 'ARMATURE')
-                    b_modifier.object = self.b_armature_object
-                    b_modifier.use_vertex_groups = True
+                b_mesh = self.import_vertex_buffer_mesh(mesh_link)
 
             # Configure material for the mesh
             b_material = bpy.data.materials.new(f"Mesh-{self.render_ware.get_index(mesh_link)}")
@@ -296,8 +394,128 @@ class RW4Importer:
 
         bpy.ops.object.mode_set(mode='OBJECT')
 
+    def process_animation(self, animation):
+        """
+        Process all the keyframes of the animation, computing the final transformation matrices used in the shader.
+        The matrices are the model space transformation from the base pose to the animated pose.
+        Returns a list of channels, where every channel is a list of Matrix4 keyframes with the transformation.
+        :param animation:
+        :return: [[channel0_keyframe0, channel0_keyframe1,...], [channel1_keyframe0,...],...]
+        """
+        # 1. Clssify all keyframes by their time
+        # [(time1, pose_bones), (time2, pose_bones), etc], one keyframe per channel per time
+        keyframe_poses = OrderedDict()
+        for c, channel in enumerate(animation.channels):
+            for kf in channel.keyframes:
+                if kf.time not in keyframe_poses:
+                    keyframe_poses[kf.time] = [None] * len(animation.channels)
+
+                if channel.keyframe_class == rw4_base.LocRotScaleKeyframe or \
+                        channel.keyframe_class == rw4_base.LocRotKeyframe:
+                    r = Quaternion((kf.rot[3], kf.rot[0], kf.rot[1], kf.rot[2]))
+                    t = Vector(kf.loc)
+                else:
+                    r = Quaternion()
+                    t = Vector((0, 0, 0))
+
+                if channel.keyframe_class == rw4_base.LocRotScaleKeyframe:
+                    s = Vector(kf.scale)
+                else:
+                    s = Vector((1.0, 1.0, 1.0))
+
+                keyframe_poses[kf.time][c] = PoseBone(r=r, t=t, s=s)
+
+        # 2. Process the transformation matrix
+        # This is the same algorithm used by Spore; the result is what is sent to the DirectX shader
+        # These are the transforms in model space from the rest pose to the animated pose
+        # This assumes that parents will always be processed before their children
+        # List of channels, which are list of PoseBone keyframes containing the transformation
+        channel_keyframes = [[] for _ in animation.channels]
+
+        # Process for every channel for every time
+        # We must do it even if the channel didn't have a keyframe there, because it might be used by other channels
+        for time, pose_bones in keyframe_poses.items():
+            print()
+            print(f"# TIME {time}")
+            print()
+
+            branches = []  # Used as an stack
+            previous_rot = Matrix.Identity(3)
+            previous_loc = Vector((0, 0, 0))
+            previous_scale = Vector((1.0, 1.0, 1.0))  # inverse scale
+
+            for c, (pose_bone, bone) in enumerate(zip(pose_bones, self.bones)):
+                skip_bone = pose_bone is None
+                if skip_bone:
+                    pose_bone = interpolate_pose(animation, time, c, keyframe_poses)
+
+                # # Apply the scale
+                # scale_matrix = Matrix.Diagonal((1.0 / previous_scale.x, 1.0 / previous_scale.y, 1.0 / previous_scale.z))
+                # m = scale_matrix @ Matrix.Diagonal(pose_bone.s)
+                # # Apply the rotation
+                # m = previous_rot @ (m @ pose_bone.r.to_matrix())
+
+                # Apply the scale
+                scale_matrix = Matrix.Diagonal(pose_bone.s)
+                parent_inv_scale = Matrix.Diagonal((1.0 / previous_scale.x, 1.0 / previous_scale.y, 1.0 / previous_scale.z))
+                old_m = parent_inv_scale @ scale_matrix
+                # Apply the rotation
+                old_m = previous_rot @ (old_m @ pose_bone.r.to_matrix())
+
+                # m = (pose_bone.r.to_matrix() @ scale_matrix).transposed() @ parent_inv_scale
+                m = (scale_matrix @ pose_bone.r.to_matrix().transposed()) @ parent_inv_scale
+                #print(m)
+                m = m @ previous_rot
+
+                # t = pose_bone.t @ previous_rot.transposed() + previous_loc
+                t = previous_rot.transposed() @ pose_bone.t + previous_loc
+                #print(previous_rot)
+                #print(previous_loc)
+                #print(t)
+
+                if not skip_bone:
+                    #dst_r = m @ bone.matrix.inverted()
+                    dst_r = bone.matrix @ m
+                    #print(m)
+                    dst_t = t + (m.transposed() @ bone.translation)
+                    #print(dst_t)
+                    for i in range(3):
+                        print(f"skin_bones_data += struct.pack('ffff', {dst_r[i][0]}, {dst_r[i][1]}, {dst_r[i][2]}, {dst_t[i]})")
+                    channel_keyframes[c].append(Matrix.Translation(dst_t) @ dst_r.to_4x4())
+
+                #print()
+
+                if bone.flags == rw4_base.SkeletonBone.TYPE_ROOT:
+                    previous_rot = m
+                    previous_loc = t
+                    previous_scale = pose_bone.s
+
+                elif bone.flags == rw4_base.SkeletonBone.TYPE_LEAF:
+                    if branches:
+                        previous_rot, previous_loc, previous_scale = branches.pop()
+
+                elif bone.flags == rw4_base.SkeletonBone.TYPE_BRANCH:
+                    branches.append((previous_rot, previous_loc, previous_scale))
+                    previous_rot = m
+                    previous_loc = t
+                    previous_scale = pose_bone.s
+
+        return channel_keyframes
+
+    def import_animation_shape_key(self, animation, b_action):
+        for channel in animation.channels:
+            #TODO get from animation skeleton id? Theorically there should be a single mesh object
+            key = self.b_meshes[0].shape_keys.key_blocks[get_name(channel.channel_id)]
+            data_path = key.path_from_id('value')
+            fcurve = b_action.fcurves.new(data_path)
+            for keyframe in channel.keyframes:
+                time = keyframe.time * rw4_base.KeyframeAnim.frames_per_second
+                fcurve.keyframe_points.insert(time, keyframe.factor)
+
     @staticmethod
-    def import_animation_channel(b_pose_bone, b_action, b_action_group, channel, index, channel_keyframes):
+    def import_animation_channel(
+            b_pose_bone, b_action, b_action_group, channel, index, channel_keyframes, compensation_factor):
+
         import_locrot = channel.keyframe_class in (rw4_base.LocRotScaleKeyframe, rw4_base.LocRotKeyframe)
         import_scale = channel.keyframe_class == rw4_base.LocRotScaleKeyframe
 
@@ -337,6 +555,9 @@ class RW4Importer:
                 if b_pose_bone.parent is not None:
                     qr = b_pose_bone.parent.matrix.inverted().to_quaternion() @ qr
 
+                if compensation_factor != 1.0:
+                    qr = Quaternion().slerp(qr, compensation_factor)
+
                 for i in range(4):
                     fcurves_qr[i].keyframe_points.insert(time, qr[i])
 
@@ -352,6 +573,9 @@ class RW4Importer:
                     world_pos_relative = vt - (parent_transform @ b_pose_bone.bone.head_local)
                     vt = parent_matrix.to_3x3().inverted() @ world_pos_relative
 
+                if compensation_factor != 1.0:
+                    vt = Vector((0, 0, 0)).lerp(vt, compensation_factor)
+
                 for i in range(3):
                     fcurves_vt[i].keyframe_points.insert(time, vt[i])
 
@@ -360,120 +584,62 @@ class RW4Importer:
                     # Since we use an Identity rotation for the bone matrix, it's the same
                     vs = transform.to_scale()
 
+                    if compensation_factor != 1.0:
+                        vs = Vector((1.0, 1.0, 1.0)).lerp(vs, compensation_factor)
+
                     for i in range(3):
                         fcurves_vs[i].keyframe_points.insert(time, vs[i])
 
-    def process_animation(self, animation):
+    def import_animation(self, animation, b_action, compensation_factor=1.0):
         """
-        Process all the keyframes of the animation, computing the final transformation matrices used in the shader.
-        The matrices are the model space transformation from the base pose to the animated pose.
-        Returns a list of channels, where every channel is a list of Matrix4 keyframes with the transformation.
+        Imports a RW4 animation into the given action. A compensation factor can be applied; it will be used as an
+        interpolation value to soften morph handle animations.
         :param animation:
-        :return: [[channel0_keyframe0, channel0_keyframe1,...], [channel1_keyframe0,...],...]
+        :param b_action:
+        :param compensation_factor:
+        :return:
         """
-        # 1. Classify all keyframes by their time
-        # [(time1, pose_bones), (time2, pose_bones), etc], one keyframe per channel per time
-        keyframe_poses = OrderedDict()
-        for c, channel in enumerate(animation.channels):
-            for kf in channel.keyframes:
-                if kf.time not in keyframe_poses:
-                    keyframe_poses[kf.time] = [None] * len(animation.channels)
+        is_shape_key = False
+        for channel in animation.channels:
+            if channel.keyframe_class == rw4_base.BlendFactorKeyframe:
+                is_shape_key = True
+                break
 
-                if channel.keyframe_class == rw4_base.LocRotScaleKeyframe or \
-                        channel.keyframe_class == rw4_base.LocRotKeyframe:
-                    r = Quaternion((kf.rot[3], kf.rot[0], kf.rot[1], kf.rot[2]))
-                    t = Vector(kf.loc)
-                else:
-                    r = Quaternion()
-                    t = Vector((0, 0, 0))
+        if is_shape_key:
+            bpy.context.view_layer.objects.active = self.b_mesh_objects[0]
+            self.b_meshes[0].shape_keys.animation_data_create()
+            self.b_meshes[0].shape_keys.animation_data.action = b_action
 
-                if channel.keyframe_class == rw4_base.LocRotScaleKeyframe:
-                    s = Vector(kf.scale)
-                else:
-                    s = Vector((1.0, 1.0, 1.0))
+            self.import_animation_shape_key(animation, b_action)
 
-                keyframe_poses[kf.time][c] = PoseBone(r=r, t=t, s=s)
+        else:
+            bpy.context.view_layer.objects.active = self.b_armature_object
+            bpy.ops.object.mode_set(mode='POSE')
 
-        # 2. Process the transformation matrix
-        # This is the same algorithm used by Spore; the result is what is sent to the DirectX shader
-        # These are the transforms in model space from the rest pose to the animated pose
-        # This assumes that parents will always be processed before their children
-        # List of channels, which are list of PoseBone keyframes containing the transformation
-        channel_keyframes = [[] for _ in animation.channels]
+            self.b_armature_object.animation_data_create()
+            self.b_armature_object.animation_data.action = b_action
 
-        # Process for every channel for every time
-        # We must do it even if the channel didn't have a keyframe there, because it might be used by other channels
-        for time, pose_bones in keyframe_poses.items():
-            branches = []  # Used as an stack
-            previous_rot = Matrix.Identity(3)
-            previous_loc = Vector((0, 0, 0))
-            previous_scale = Vector((1.0, 1.0, 1.0))  # inverse scale
+            bpy.ops.object.mode_set(mode='POSE')
+            bpy.context.scene.frame_set(0)
+            for bone in self.b_armature.bones:
+                bone.select = True
+            bpy.ops.pose.transforms_clear()
 
-            for c, (pose_bone, bone) in enumerate(zip(pose_bones, self.bones)):
-                skip_bone = pose_bone is None
-                if skip_bone:
-                    pose_bone = interpolate_pose(time, c, keyframe_poses)
+            channel_keyframes = self.process_animation(animation)
+            for c, channel in enumerate(animation.channels):
+                b_pose_bone = self.b_armature_object.pose.bones[c]
+                b_action_group = b_action.groups.new(b_pose_bone.name)
 
-                # Apply the scale
-                scale_matrix = Matrix.Diagonal((1.0 / previous_scale.x, 1.0 / previous_scale.y, 1.0 / previous_scale.z))
-                m = scale_matrix @ Matrix.Diagonal(pose_bone.s)
-                # Apply the rotation
-                m = previous_rot @ (m @ pose_bone.r.to_matrix())
+                RW4Importer.import_animation_channel(
+                    b_pose_bone,
+                    b_action,
+                    b_action_group,
+                    channel,
+                    c,
+                    channel_keyframes,
+                    compensation_factor)
 
-                t = pose_bone.t @ previous_rot.transposed() + previous_loc
-
-                if not skip_bone:
-                    dst_r = m @ bone.matrix.inverted()
-                    dst_t = t + (m @ bone.translation)
-                    # for i in range(3):
-                    #     print(f"skin_bones_data += struct.pack(
-                    #     'ffff', {dst_r[i][0]}, {dst_r[i][1]}, {dst_r[i][2]}, {dst_t[i]})")
-                    channel_keyframes[c].append(Matrix.Translation(dst_t) @ dst_r.to_4x4())
-
-                if bone.flags == rw4_base.SkeletonBone.TYPE_ROOT:
-                    previous_rot = m
-                    previous_loc = t
-                    previous_scale = pose_bone.s
-
-                elif bone.flags == rw4_base.SkeletonBone.TYPE_LEAF:
-                    if branches:
-                        previous_rot, previous_loc, previous_scale = branches.pop()
-
-                elif bone.flags == rw4_base.SkeletonBone.TYPE_BRANCH:
-                    branches.append((previous_rot, previous_loc, previous_scale))
-                    previous_rot = m
-                    previous_loc = t
-                    previous_scale = pose_bone.s
-
-        return channel_keyframes
-
-    def import_animation(self, animation, b_action):
-        bpy.ops.object.mode_set(mode='POSE')
-
-        self.b_armature_object.animation_data_create()
-        self.b_armature_object.animation_data.action = b_action
-
-        bpy.ops.object.mode_set(mode='POSE')
-        bpy.context.scene.frame_set(0)
-        for bone in self.b_armature.bones:
-            bone.select = True
-        bpy.ops.pose.transforms_clear()
-
-        channel_keyframes = self.process_animation(animation)
-
-        for c, channel in enumerate(animation.channels):
-            b_pose_bone = self.b_armature_object.pose.bones[c]
-            b_action_group = b_action.groups.new(b_pose_bone.name)
-
-            RW4Importer.import_animation_channel(
-                b_pose_bone,
-                b_action,
-                b_action_group,
-                channel,
-                c,
-                channel_keyframes)
-
-        bpy.ops.object.mode_set(mode='OBJECT')
+            bpy.ops.object.mode_set(mode='OBJECT')
 
         return b_action
 
@@ -483,19 +649,19 @@ class RW4Importer:
 
         anim_objects = self.render_ware.get_objects(rw4_base.Animations.type_code)
         handle_objects = self.render_ware.get_objects(rw4_base.MorphHandle.type_code)
+        print(handle_objects)
 
         # First create all actions
         if not anim_objects and not handle_objects:
             return
 
-        bpy.context.view_layer.objects.active = self.b_armature_object
         self.b_armature_object.animation_data_create()
-        animations = anim_objects[0].animations
 
-        for anim_id in animations.keys():
-            b_action = bpy.data.actions.new(get_name(anim_id))
-            b_action.use_fake_user = True
-            self.b_animation_actions.append(b_action)
+        if anim_objects:
+            for anim_id in anim_objects[0].animations.keys():
+                b_action = bpy.data.actions.new(get_name(anim_id))
+                b_action.use_fake_user = True
+                self.b_animation_actions.append(b_action)
 
         for handle in handle_objects:
             b_action = bpy.data.actions.new(get_name(handle.handle_id))
@@ -507,11 +673,19 @@ class RW4Importer:
             b_action.rw4.final_pos = handle.end_pos
             b_action.rw4.default_frame = int(handle.default_time * 24)
 
-        for i, anim in enumerate(animations.values()):
-            self.import_animation(anim, self.b_animation_actions[i])
+        if anim_objects:
+            for i, anim in enumerate(anim_objects[0].animations.values()):
+                self.import_animation(anim, self.b_animation_actions[i])
+
+        anim_count = len(anim_objects[0].animations) if anim_objects else 0
 
         for i, handle in enumerate(handle_objects):
-            self.import_animation(handle.anim, self.b_animation_actions[i + len(animations)])
+            print()
+            print()
+            print(f"## --- ANIM {self.b_animation_actions[i + anim_count].name}")
+            print()
+            # self.import_animation(handle.animation, self.b_animation_actions[i + anim_count], 1.0 / len(handle_objects))
+            self.import_animation(handle.animation, self.b_animation_actions[i + anim_count])
 
         bpy.context.scene.frame_set(0)
 
