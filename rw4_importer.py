@@ -435,10 +435,6 @@ class RW4Importer:
         # Process for every channel for every time
         # We must do it even if the channel didn't have a keyframe there, because it might be used by other channels
         for time, pose_bones in keyframe_poses.items():
-            print()
-            print(f"# TIME {time}")
-            print()
-
             branches = []  # Used as an stack
             previous_rot = Matrix.Identity(3)
             previous_loc = Vector((0, 0, 0))
@@ -449,42 +445,22 @@ class RW4Importer:
                 if skip_bone:
                     pose_bone = interpolate_pose(animation, time, c, keyframe_poses)
 
-                # # Apply the scale
-                # scale_matrix = Matrix.Diagonal((1.0 / previous_scale.x, 1.0 / previous_scale.y, 1.0 / previous_scale.z))
-                # m = scale_matrix @ Matrix.Diagonal(pose_bone.s)
-                # # Apply the rotation
-                # m = previous_rot @ (m @ pose_bone.r.to_matrix())
-
                 # Apply the scale
                 scale_matrix = Matrix.Diagonal(pose_bone.s)
-                parent_inv_scale = Matrix.Diagonal((1.0 / previous_scale.x, 1.0 / previous_scale.y, 1.0 / previous_scale.z))
-                old_m = parent_inv_scale @ scale_matrix
-                # Apply the rotation
-                old_m = previous_rot @ (old_m @ pose_bone.r.to_matrix())
-
-                # m = (pose_bone.r.to_matrix() @ scale_matrix).transposed() @ parent_inv_scale
+                parent_inv_scale = \
+                    Matrix.Diagonal((1.0 / previous_scale.x, 1.0 / previous_scale.y, 1.0 / previous_scale.z))
                 m = (scale_matrix @ pose_bone.r.to_matrix().transposed()) @ parent_inv_scale
-                #print(m)
                 m = m @ previous_rot
 
-                # t = pose_bone.t @ previous_rot.transposed() + previous_loc
                 t = previous_rot.transposed() @ pose_bone.t + previous_loc
-                #print(previous_rot)
-                #print(previous_loc)
-                #print(t)
 
                 if not skip_bone:
-                    # dst_r = m @ bone.matrix.inverted()
                     dst_r = (bone.matrix @ m).transposed()
-                    #dst_r = m.transposed() @ bone.matrix.transposed()
-                    #print(m)
                     dst_t = t + (m.transposed() @ bone.translation)
-                    #print(dst_t)
-                    for i in range(3):
-                        print(f"skin_bones_data += struct.pack('ffff', {dst_r[i][0]}, {dst_r[i][1]}, {dst_r[i][2]}, {dst_t[i]})")
-                    channel_keyframes[c].append(Matrix.Translation(dst_t) @ dst_r.to_4x4())
 
-                #print()
+                    #for i in range(3):
+                    #    print(f"skin_bones_data += struct.pack('ffff', {dst_r[i][0]}, {dst_r[i][1]}, {dst_r[i][2]}, {dst_t[i]})")
+                    channel_keyframes[c].append(Matrix.Translation(dst_t) @ dst_r.to_4x4())
 
                 if bone.flags == rw4_base.SkeletonBone.TYPE_ROOT:
                     previous_rot = m
@@ -515,7 +491,7 @@ class RW4Importer:
 
     @staticmethod
     def import_animation_channel(
-            b_pose_bone, b_action, b_action_group, channel, index, channel_keyframes, compensation_factor):
+            b_pose_bone, b_action, b_action_group, channel, index, channel_keyframes):
 
         import_locrot = channel.keyframe_class in (rw4_base.LocRotScaleKeyframe, rw4_base.LocRotKeyframe)
         import_scale = channel.keyframe_class == rw4_base.LocRotScaleKeyframe
@@ -556,9 +532,6 @@ class RW4Importer:
                 if b_pose_bone.parent is not None:
                     qr = b_pose_bone.parent.matrix.inverted().to_quaternion() @ qr
 
-                if compensation_factor != 1.0:
-                    qr = Quaternion().slerp(qr, compensation_factor)
-
                 for i in range(4):
                     fcurves_qr[i].keyframe_points.insert(time, qr[i])
 
@@ -574,9 +547,6 @@ class RW4Importer:
                     world_pos_relative = vt - (parent_transform @ b_pose_bone.bone.head_local)
                     vt = parent_matrix.to_3x3().inverted() @ world_pos_relative
 
-                if compensation_factor != 1.0:
-                    vt = Vector((0, 0, 0)).lerp(vt, compensation_factor)
-
                 for i in range(3):
                     fcurves_vt[i].keyframe_points.insert(time, vt[i])
 
@@ -585,13 +555,23 @@ class RW4Importer:
                     # Since we use an Identity rotation for the bone matrix, it's the same
                     vs = transform.to_scale()
 
-                    if compensation_factor != 1.0:
-                        vs = Vector((1.0, 1.0, 1.0)).lerp(vs, compensation_factor)
+                    # BUT we have to compensate for the parent scaling.
+                    if b_pose_bone.parent is not None:
+                        _, parent_rotation, parent_scale = b_pose_bone.parent.matrix.decompose()
+                        world_parent_scale = (parent_rotation.to_matrix() @ Matrix.Diagonal(parent_scale)).to_scale()
+
+                        # This assumes matrix_local is Identity
+                        _, rotation, _ = transform.decompose()
+                        # Parent scale in bone coordinate system
+                        bone_parent_scale = \
+                            (rotation.inverted().to_matrix() @ Matrix.Diagonal(world_parent_scale)).to_scale()
+
+                        vs = Vector([vs[i] / bone_parent_scale[i] for i in range(3)])
 
                     for i in range(3):
                         fcurves_vs[i].keyframe_points.insert(time, vs[i])
 
-    def import_animation(self, animation, b_action, compensation_factor=1.0):
+    def import_animation(self, animation, b_action):
         """
         Imports a RW4 animation into the given action. A compensation factor can be applied; it will be used as an
         interpolation value to soften morph handle animations.
@@ -637,8 +617,7 @@ class RW4Importer:
                     b_action_group,
                     channel,
                     c,
-                    channel_keyframes,
-                    compensation_factor)
+                    channel_keyframes)
 
             bpy.ops.object.mode_set(mode='OBJECT')
 
@@ -650,7 +629,6 @@ class RW4Importer:
 
         anim_objects = self.render_ware.get_objects(rw4_base.Animations.type_code)
         handle_objects = self.render_ware.get_objects(rw4_base.MorphHandle.type_code)
-        print(handle_objects)
 
         # First create all actions
         if not anim_objects and not handle_objects:
@@ -681,11 +659,6 @@ class RW4Importer:
         anim_count = len(anim_objects[0].animations) if anim_objects else 0
 
         for i, handle in enumerate(handle_objects):
-            print()
-            print()
-            print(f"## --- ANIM {self.b_animation_actions[i + anim_count].name}")
-            print()
-            # self.import_animation(handle.animation, self.b_animation_actions[i + anim_count], 1.0 / len(handle_objects))
             self.import_animation(handle.animation, self.b_animation_actions[i + anim_count])
 
         bpy.context.scene.frame_set(0)
