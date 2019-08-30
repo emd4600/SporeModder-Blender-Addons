@@ -474,8 +474,9 @@ class RW4Importer:
                 #print(t)
 
                 if not skip_bone:
-                    #dst_r = m @ bone.matrix.inverted()
-                    dst_r = bone.matrix @ m
+                    # dst_r = m @ bone.matrix.inverted()
+                    dst_r = (bone.matrix @ m).transposed()
+                    #dst_r = m.transposed() @ bone.matrix.transposed()
                     #print(m)
                     dst_t = t + (m.transposed() @ bone.translation)
                     #print(dst_t)
