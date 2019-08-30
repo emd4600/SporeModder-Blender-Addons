@@ -180,11 +180,14 @@ class RW4Importer:
         self.process_index_buffer(mesh_link.mesh.index_buffer, b_mesh)
         b_mesh.update(calc_edges=True)
 
+        shape_key = b_object.shape_key_add(name='Basis')
+        shape_key.interpolation = 'KEY_LINEAR'
+
         for i, shape_id in enumerate(blend_shapes[0].shape_ids):
-            shape_key = b_object.shape_key_add(name='Basis' if shape_id == 0 else get_name(shape_id))
+            shape_key = b_object.shape_key_add(name=get_name(shape_id))
             shape_key.interpolation = 'KEY_LINEAR'
 
-            stream.seek(buffer.offsets[rw4_base.BlendShapeBuffer.INDEX_POSITION] + 16*i*vertex_count)
+            stream.seek(buffer.offsets[rw4_base.BlendShapeBuffer.INDEX_POSITION] + 16*(i+1)*vertex_count)
             for v in range(vertex_count):
                 shape_key.data[v].co = Vector(stream.unpack('<fff')) + b_mesh.vertices[v].co
                 stream.skip_bytes(4)
@@ -573,11 +576,9 @@ class RW4Importer:
 
     def import_animation(self, animation, b_action):
         """
-        Imports a RW4 animation into the given action. A compensation factor can be applied; it will be used as an
-        interpolation value to soften morph handle animations.
+        Imports a RW4 animation into the given action.
         :param animation:
         :param b_action:
-        :param compensation_factor:
         :return:
         """
         is_shape_key = False
