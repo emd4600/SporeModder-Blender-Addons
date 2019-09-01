@@ -9,7 +9,7 @@ __author__ = 'Eric'
 
 import struct
 from collections import namedtuple
-from .file_io import FileReader, FileWriter
+from .file_io import FileReader, FileWriter, ArrayFileReader
 from . import rw4_enums
 
 
@@ -241,7 +241,7 @@ class RenderWare4:
 
         for obj in self.objects:
             if obj is not None and obj.type_code not in self.excluded_types:
-                file.seek(obj.section_info.p_data)
+                self.seek_to_data(file, obj)
                 obj.read(file)
 
     def write(self, file: FileWriter):
@@ -539,24 +539,15 @@ class BaseResource(RWObject):
     type_code = 0x10030
     alignment = 4
 
-    def __init__(self, render_ware: RenderWare4, write_method=None, data=None, owner=None):
+    def __init__(self, render_ware: RenderWare4, data=None):
         super().__init__(render_ware)
-        self.write_method = write_method
         self.data = data
-        self.owner = owner
 
     def read(self, file: FileReader):
-        pass
+        self.data = file.read(self.section_info.data_size)
 
     def write(self, file: FileWriter):
-        if self.write_method is None:
-            raise NotImplementedError("No write method specified for this resource")
-        else:
-            self.write_method(file, self.data, self.owner)
-
-    def read_data(self, file: FileReader):
-        self.render_ware.seek_to_data(file, self)
-        return file.read(self.section_info.data_size)
+        file.write(self.data)
 
 
 class Raster(RWObject):
@@ -711,11 +702,11 @@ class VertexBuffer(RWObject):
         elif self.vertex_data is None:
             raise ModelError("Cannot process vertices without a data buffer.", self)
 
-        self.render_ware.seek_to_data(file, self.vertex_data)
+        vertex_stream = ArrayFileReader(self.vertex_data.data)
 
         vertices = []
         for i in range(self.vertex_count):
-            vertices.append(self.vertex_description.read_vertex(file))
+            vertices.append(self.vertex_description.read_vertex(vertex_stream))
 
         return vertices
 
@@ -765,12 +756,11 @@ class IndexBuffer(RWObject):
             raise ModelError("Cannot process indices without a data buffer.", self)
 
         indices = []
-
-        self.render_ware.seek_to_data(file, self.index_data)
+        index_stream = ArrayFileReader(self.index_data.data)
 
         fmt = '<H' if self.format == rw4_enums.D3DFMT_INDEX16 else '<I'
         for i in range(self.primitive_count):
-            indices.append(file.unpack(fmt)[0])
+            indices.append(index_stream.unpack(fmt)[0])
 
         return indices
 

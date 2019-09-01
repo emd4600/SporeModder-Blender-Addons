@@ -485,7 +485,7 @@ class RW4Importer:
     def import_animation_shape_key(self, animation, b_action):
         for channel in animation.channels:
             #TODO get from animation skeleton id? Theorically there should be a single mesh object
-            key = self.b_meshes[0].shape_keys.key_blocks[get_name(channel.channel_id)]
+            key = self.b_meshes[0].shape_keys.key_read_datablocks[get_name(channel.channel_id)]
             data_path = key.path_from_id('value')
             fcurve = b_action.fcurves.new(data_path)
             for keyframe in channel.keyframes:

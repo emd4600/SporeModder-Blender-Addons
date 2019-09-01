@@ -14,23 +14,28 @@ def show_message_box(message: str, title: str, icon='ERROR'):
     bpy.context.window_manager.popup_menu(draw, title=title, icon=icon)
 
 
-# noinspection PyUnusedLocal
-def write_raw_buffer(file: file_io.FileWriter, data, owner):
-    file.write(data)
-
-
-def write_index_buffer(file: file_io.FileWriter, data, owner):
-    if owner.format == rw4_enums.D3DFMT_INDEX16:
+def write_index_buffer(data, fmt):
+    file = file_io.ArrayFileWriter()
+    if fmt == rw4_enums.D3DFMT_INDEX16:
         for x in data:
             file.write_ushort(x)
-    elif owner.format == rw4_enums.D3DFMT_INDEX32:
+    elif fmt == rw4_enums.D3DFMT_INDEX32:
         for x in data:
             file.write_uint(x)
 
+    return file.buffer
 
-def write_vertex_buffer(file: file_io.FileWriter, data, owner):
+
+def write_vertex_buffer(data, vertex_elements):
+    file = file_io.ArrayFileWriter()
+    print("WRITING VERTEX BUFFER")
+    print(vertex_elements)
     for v in data:
-        rw4_enums.write_rw_vertex(owner.vertex_description.vertex_elements, v, file)
+        rw4_enums.write_rw_vertex(vertex_elements, v, file)
+
+    print("VERTEX BUFFER WRITTEN")
+
+    return file.buffer
 
 
 def signed_float_to_ubyte(value):
@@ -41,8 +46,7 @@ def unpack_ubyte_vec3(values):
     return Vector((
         (values[0] - 127.5) / 127.5,
         (values[1] - 127.5) / 127.5,
-        (values[2] - 127.5) / 127.5
-    ))
+        (values[2] - 127.5) / 127.5))
 
 
 def pack_ubyte_vec3(values):
@@ -50,8 +54,7 @@ def pack_ubyte_vec3(values):
         int(round(values[0] * 127.5 + 127.5) & 0xFF),
         int(round(values[1] * 127.5 + 127.5) & 0xFF),
         int(round(values[2] * 127.5 + 127.5) & 0xFF),
-        0
-    )
+        0)
 
 
 def mesh_triangulate(me):
@@ -153,8 +156,7 @@ class RW4Exporter:
             return self.added_textures[path]
 
         raster = rw4_base.Raster(self.render_ware)
-        data_buffer = rw4_base.BaseResource(self.render_ware,
-                                            write_method=write_raw_buffer)
+        data_buffer = rw4_base.BaseResource(self.render_ware)
 
         if path is None or not path:
             # Just create an empty texture
@@ -268,7 +270,10 @@ class RW4Exporter:
                     index = mesh.loops[i].vertex_index
 
                     # Has a vertex with these UV coordinates been already processed?
+                    print(new_vertex_indices[index])
                     for processed_index in new_vertex_indices[index]:
+                        #triangles[t][i - face.loop_start] = new_vertex_indices[index][0]
+                        #break
                         vertex = vertices[processed_index]
                         if vertex["texcoord0"][0] == uv_data[i].uv[0] \
                                 and vertex["texcoord0"][1] == uv_data[i].uv[1]:
@@ -277,6 +282,8 @@ class RW4Exporter:
 
                     # If no vertex with UVs has been processed
                     else:
+                        if new_vertex_indices[index]:
+                            print(current_processed_index)
                         b_vertex = mesh.vertices[index]
                         # Process vertex
                         # Spore normals and tangents are ubytes from 0 to 255
@@ -411,9 +418,6 @@ class RW4Exporter:
 
         vertices, triangles = self.process_mesh(obj, blender_mesh, use_texcoord, use_bones, vertex_desc.vertex_elements)
 
-        # When it's only for exporting we must remove it
-        obj.to_mesh_clear()
-
         # Configure INDEX BUFFER
         index_buffer = rw4_base.IndexBuffer(
             render_ware,
@@ -436,11 +440,10 @@ class RW4Exporter:
             field_10=8,
             vertex_size=vertex_desc.vertex_size
         )
+
         vertex_buffer.vertex_data = rw4_base.BaseResource(
             render_ware,
-            write_method=write_vertex_buffer,
-            data=vertices,
-            owner=vertex_buffer
+            data=write_vertex_buffer(vertices, vertex_desc.vertex_elements),
         )
 
         index_data = []
@@ -511,10 +514,12 @@ class RW4Exporter:
 
         index_buffer.index_data = rw4_base.BaseResource(
             render_ware,
-            write_method=write_index_buffer,
-            data=index_data,
-            owner=index_buffer
+            data=write_index_buffer(index_data, index_buffer.format)
         )
+
+        # When it's only for exporting we must remove it
+        # BUT remove it after we have used its data
+        obj.to_mesh_clear()
 
         # Add all the objects we just created
         render_ware.add_object(index_buffer)
