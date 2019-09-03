@@ -28,12 +28,8 @@ def write_index_buffer(data, fmt):
 
 def write_vertex_buffer(data, vertex_elements):
     file = file_io.ArrayFileWriter()
-    print("WRITING VERTEX BUFFER")
-    print(vertex_elements)
     for v in data:
         rw4_enums.write_rw_vertex(vertex_elements, v, file)
-
-    print("VERTEX BUFFER WRITTEN")
 
     return file.buffer
 
@@ -197,6 +193,13 @@ class RW4Exporter:
         return raster
 
     def process_vertex_bones(self, obj, b_vertex, vertex_dict):
+        """
+        Adds the bone indices and weights of the given vertex into the vertex attributes.
+        :param obj: The mesh object.
+        :param b_vertex:
+        :param vertex_dict:
+        :return:
+        """
         indices = []
         weights = []
         size = 0
@@ -225,10 +228,23 @@ class RW4Exporter:
         """
         Spore models only have one UV per-vertex, whereas Blender can have more than just one.
         This method converts a Blender mesh into a valid Spore mesh.
+
+        The output vertices is a list of Vertex class instances created with the vertex elements definition.
+        The output triangles is a list of [i, j, k, material_index] elements.
+        The output new_indices is such as new_indices[i] contains all the indices in the vertices list that
+        correspond to the old vertex of index i.
+
+        :param obj: The Blender mesh object that must be processed.
+        :param mesh: The triangulated Blender mesh.
+        :param use_texcoord: Whether UV texcoords must be processed.
+        :param use_bones: Whether bone indices/weights must be processed.
+        :param vertex_elements: A VertexElement list that is used to define a vertex.
+        :returns: A tuple of (vertices, triangles, new_indices)
         """
         # The result; triangles are (i, j, k, material_index)
         triangles = [None] * len(mesh.polygons)
         vertices = []
+        new_vertex_indices = [[] for _ in range(len(mesh.vertices))]
 
         if not use_texcoord:
             # No need to process if we don't have UV coords
@@ -239,7 +255,7 @@ class RW4Exporter:
                                 mesh.loops[face.loop_start + 2].vertex_index,
                                 face.material_index)
 
-            for b_vertex in mesh.vertices:
+            for i, b_vertex in enumerate(mesh.vertices):
                 # Spore normals and tangents are ubytes from 0 to 255
                 vertex = {"position": b_vertex.co,
                           "normal": (
@@ -252,12 +268,12 @@ class RW4Exporter:
                 if use_bones:
                     self.process_vertex_bones(obj, b_vertex, vertex)
 
+                new_vertex_indices[i] = i
                 vertices.append(vertex)
 
         else:
             # Each item of this list is a list of all the new vertex indices that
             # represent that vertex
-            new_vertex_indices = [[] for _ in range(len(mesh.vertices))]
             current_processed_index = 0
 
             uv_data = mesh.uv_layers.active.data
@@ -270,10 +286,7 @@ class RW4Exporter:
                     index = mesh.loops[i].vertex_index
 
                     # Has a vertex with these UV coordinates been already processed?
-                    print(new_vertex_indices[index])
                     for processed_index in new_vertex_indices[index]:
-                        #triangles[t][i - face.loop_start] = new_vertex_indices[index][0]
-                        #break
                         vertex = vertices[processed_index]
                         if vertex["texcoord0"][0] == uv_data[i].uv[0] \
                                 and vertex["texcoord0"][1] == uv_data[i].uv[1]:
@@ -282,8 +295,6 @@ class RW4Exporter:
 
                     # If no vertex with UVs has been processed
                     else:
-                        if new_vertex_indices[index]:
-                            print(current_processed_index)
                         b_vertex = mesh.vertices[index]
                         # Process vertex
                         # Spore normals and tangents are ubytes from 0 to 255
@@ -317,9 +328,22 @@ class RW4Exporter:
         vertex_class = rw4_enums.create_rw_vertex_class(vertex_elements)
         processed_vertices = [vertex_class(**v) for v in vertices]
 
-        return processed_vertices, triangles
+        return processed_vertices, triangles, new_vertex_indices
 
     def create_vertex_description(self, use_texcoord, use_bones):
+        """
+        Creates the VertexDescription object used to define a certain vertex format.
+        The elements will be:
+         - position
+         - normal
+         - texcoord0 (if use_texcoord)
+         - tangent (if use_texcoord)
+         - blendIndices (if use_bones)
+         - blendWeights (if use_bones)
+        :param use_texcoord: If UV texcoords must be included in this description.
+        :param use_bones: If bone indices/weights must be included in this description.
+        :return: The VertexDescription object.
+        """
         description = rw4_base.VertexDescription(self.render_ware)
         offset = 0
 
@@ -405,8 +429,12 @@ class RW4Exporter:
     def export_mesh_object(self, obj):
         render_ware = self.render_ware
 
+        use_shape_keys = obj.data.shape_keys is not None and len(obj.data.shape_keys.key_blocks) > 1
+        print(use_shape_keys)
+
         blender_mesh = obj.to_mesh()
         mesh_triangulate(blender_mesh)
+        print(blender_mesh.shape_keys)
         self.b_mesh_objects.append(obj)
 
         use_texcoord = blender_mesh.uv_layers.active is not None
@@ -416,7 +444,8 @@ class RW4Exporter:
 
         vertex_desc = self.create_vertex_description(use_texcoord, use_bones)
 
-        vertices, triangles = self.process_mesh(obj, blender_mesh, use_texcoord, use_bones, vertex_desc.vertex_elements)
+        vertices, triangles, new_indices = \
+            self.process_mesh(obj, blender_mesh, use_texcoord, use_bones, vertex_desc.vertex_elements)
 
         # Configure INDEX BUFFER
         index_buffer = rw4_base.IndexBuffer(
