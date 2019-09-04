@@ -198,6 +198,12 @@ class ResourceKey:
         self.instance_id, self.type_id, self.group_id = reader.unpack(endian + 'III')
 
 
+def write_alignment(file: FileWriter, alignment):
+    file_pos = file.tell()
+    padding = ((file_pos + alignment - 1) & ~(alignment - 1)) - file_pos
+    file.write(bytearray(padding))
+
+
 SPORE_NAMES = {
     0x89e06a31: 'ClsdOpen',
     0x75d4c8cd: 'Point',

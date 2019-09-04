@@ -27,6 +27,7 @@ def write_index_buffer(data, fmt):
 
 
 def write_vertex_buffer(data, vertex_elements):
+    data = convert_vertices(data, vertex_elements)
     file = file_io.ArrayFileWriter()
     for v in data:
         rw4_enums.write_rw_vertex(vertex_elements, v, file)
@@ -74,17 +75,27 @@ def create_skin_matrix_buffer():
 
 
 def calculate_tangents(vertices, faces):
+    """
+    Calculates the tangents of a processed mesh, storing them on `vertices['tangent']`
+    This requires the `position`, `texcoord0` and `normal` attributes.
+
+    :param vertices: A dictionary of vertices attributes lists.
+    :param faces: A list of [i, j, k, material_index] faces
+    """
     tangents = [Vector((0.0, 0.0, 0.0)) for _ in vertices]
     bitangents = [Vector((0.0, 0.0, 0.0)) for _ in vertices]
+    positions = vertices["position"]
+    texcoord0 = vertices["texcoord0"]
+    normals = vertices["normal"]
 
     for f, face in enumerate(faces):
-        v0_co = vertices[face[0]]["position"]
-        v1_co = vertices[face[1]]["position"]
-        v2_co = vertices[face[2]]["position"]
+        v0_co = positions[face[0]]
+        v1_co = positions[face[1]]
+        v2_co = positions[face[2]]
 
-        v0_uv = vertices[face[0]]["texcoord0"]
-        v1_uv = vertices[face[1]]["texcoord0"]
-        v2_uv = vertices[face[2]]["texcoord0"]
+        v0_uv = texcoord0[face[0]]
+        v1_uv = texcoord0[face[1]]
+        v2_uv = texcoord0[face[2]]
 
         dco1 = v1_co - v0_co
         dco2 = v2_co - v0_co
@@ -102,11 +113,30 @@ def calculate_tangents(vertices, faces):
         bitangents[face[1]] += bitangent
         bitangents[face[2]] += bitangent
 
-    for vertex, tangent in zip(vertices, tangents):
-        normal = unpack_ubyte_vec3(vertex["normal"])
-        tangent = (tangent - normal * tangent.dot(normal)).normalized()
-        # Spore normals and tangents are ubytes from 0 to 255
-        vertex["tangent"] = pack_ubyte_vec3(tangent)
+    for i in range(len(tangents)):
+        tangents[i] = (tangents[i] - normals[i] * tangents[i].dot(normals[i])).normalized()
+
+
+def convert_vertices(vertices, vertex_elements):
+    """
+    Converts a dictionary of vertex attributes lists into a list of Vertex objects,
+    generated using the given vertex elements list.
+
+    This method also converts the 'normal' and 'tangent' attributes into the packed 8-bit types
+    required by Spore.
+
+    :param vertices: A dictionary of vertex attributes lists
+    :param vertex_elements: A list of VertexElement objects.
+    :return:
+    """
+    if 'normal' in vertices:
+        vertices['normal'] = [pack_ubyte_vec3(v) for v in vertices['normal']]
+
+    if 'tangent' in vertices:
+        vertices['tangent'] = [pack_ubyte_vec3(v) for v in vertices['tangent']]
+
+    vertex_class = rw4_enums.create_rw_vertex_class(vertex_elements)
+    return [vertex_class(**dict(zip(vertices, v))) for v in zip(*vertices.values())]
 
 
 class RW4Exporter:
@@ -136,11 +166,19 @@ class RW4Exporter:
         self.triangle_unknowns = []
 
     def get_bone_count(self):
+        """
+        :return: The amount of bones in the skeleton of this RW4, or 0 if there is no skeleton.
+        """
+
         if self.b_armature_object is None:
             return 0
         return len(self.b_armature_object.data.bones)
 
     def get_skin_matrix_buffer_index(self):
+        """
+        :return: The reference index to the skin matrix buffer, or a NO_OBJECT index if it hasn't been added yet.
+        """
+
         if self.skin_matrix_buffer is not None:
             return self.render_ware.get_index(self.skin_matrix_buffer, section_type=rw4_base.INDEX_SUB_REFERENCE)
 
@@ -148,6 +186,13 @@ class RW4Exporter:
             return self.render_ware.get_index(None, section_type=rw4_base.INDEX_NO_OBJECT)
 
     def add_texture(self, path):
+        """
+        Adds a texture to be exported in the RenderWare4. Only DXT5 DDS textures are supported.
+
+        :param path: File path to the .dds texture.
+        :return: The Raster object created for this texture.
+        """
+
         if path in self.added_textures:
             return self.added_textures[path]
 
@@ -172,6 +217,7 @@ class RW4Exporter:
                     raster.from_dds(dds_texture)
                     data_buffer.data = dds_texture.data
             except OSError as e:
+                #TODO convert to warning
                 show_message_box(str(e), "Texture Error")
 
                 # Just create an empty texture
@@ -195,10 +241,10 @@ class RW4Exporter:
     def process_vertex_bones(self, obj, b_vertex, vertex_dict):
         """
         Adds the bone indices and weights of the given vertex into the vertex attributes.
-        :param obj: The mesh object.
-        :param b_vertex:
-        :param vertex_dict:
-        :return:
+
+        :param obj: The Blender mesh object.
+        :param b_vertex: The Blender vertex.
+        :param vertex_dict: A dictionary of vertex attributes lists.
         """
         indices = []
         weights = []
@@ -221,30 +267,35 @@ class RW4Exporter:
         if size == 0:
             weights[0] = 255
 
-        vertex_dict["blendIndices"] = indices
-        vertex_dict["blendWeights"] = weights
+        vertex_dict['blendIndices'].append(indices)
+        vertex_dict['blendWeights'].append(weights)
 
-    def process_mesh(self, obj, mesh, use_texcoord, use_bones, vertex_elements):
+    def process_mesh(self, obj, mesh, use_texcoord, use_bones):
         """
         Spore models only have one UV per-vertex, whereas Blender can have more than just one.
         This method converts a Blender mesh into a valid Spore mesh.
 
-        The output vertices is a list of Vertex class instances created with the vertex elements definition.
+        The output vertices is a dictionary that assigns a list of values for each vertex attribute ('position', etc)
         The output triangles is a list of [i, j, k, material_index] elements.
-        The output new_indices is such as new_indices[i] contains all the indices in the vertices list that
-        correspond to the old vertex of index i.
+        The output indices_map is such as indices_map[i] is the index of the original vertex that
+        corresponds to the new vertex of index i.
+
+        The output normals and tangents are in float numbers, and not converted to the packed 8-bit type.
 
         :param obj: The Blender mesh object that must be processed.
         :param mesh: The triangulated Blender mesh.
         :param use_texcoord: Whether UV texcoords must be processed.
         :param use_bones: Whether bone indices/weights must be processed.
-        :param vertex_elements: A VertexElement list that is used to define a vertex.
-        :returns: A tuple of (vertices, triangles, new_indices)
+        :returns: A tuple of (vertices, triangles, indices_map)
         """
         # The result; triangles are (i, j, k, material_index)
         triangles = [None] * len(mesh.polygons)
-        vertices = []
-        new_vertex_indices = [[] for _ in range(len(mesh.vertices))]
+        positions = []
+        normals = []
+        texcoords = []
+        tangents = []
+        vertices = {}
+        indices_map = []
 
         if not use_texcoord:
             # No need to process if we don't have UV coords
@@ -256,24 +307,17 @@ class RW4Exporter:
                                 face.material_index)
 
             for i, b_vertex in enumerate(mesh.vertices):
-                # Spore normals and tangents are ubytes from 0 to 255
-                vertex = {"position": b_vertex.co,
-                          "normal": (
-                              signed_float_to_ubyte(b_vertex.normal[0]),
-                              signed_float_to_ubyte(b_vertex.normal[1]),
-                              signed_float_to_ubyte(b_vertex.normal[2]),
-                              0  # we use ubyte4, we need 4 values
-                          )}
-
+                positions.append((b_vertex.co[0], b_vertex.co[1], b_vertex.co[2]))
+                normals.append((b_vertex.normal[0], b_vertex.normal[1], b_vertex.normal[2]))
                 if use_bones:
-                    self.process_vertex_bones(obj, b_vertex, vertex)
+                    self.process_vertex_bones(obj, b_vertex, vertices)
 
-                new_vertex_indices[i] = i
-                vertices.append(vertex)
+                indices_map.append(i)
 
         else:
             # Each item of this list is a list of all the new vertex indices that
             # represent that vertex
+            new_vertex_indices = [[] for _ in range(len(mesh.vertices))]
             current_processed_index = 0
 
             uv_data = mesh.uv_layers.active.data
@@ -287,50 +331,41 @@ class RW4Exporter:
 
                     # Has a vertex with these UV coordinates been already processed?
                     for processed_index in new_vertex_indices[index]:
-                        vertex = vertices[processed_index]
-                        if vertex["texcoord0"][0] == uv_data[i].uv[0] \
-                                and vertex["texcoord0"][1] == uv_data[i].uv[1]:
+                        uv = texcoords[processed_index]
+                        if uv[0] == uv_data[i].uv[0] and uv[1] == uv_data[i].uv[1]:
                             triangles[t][i - face.loop_start] = processed_index
                             break
 
                     # If no vertex with UVs has been processed
                     else:
                         b_vertex = mesh.vertices[index]
-                        # Process vertex
-                        # Spore normals and tangents are ubytes from 0 to 255
-                        vertex = {"position": b_vertex.co,
-                                  "normal": (
-                                      signed_float_to_ubyte(b_vertex.normal[0]),
-                                      signed_float_to_ubyte(b_vertex.normal[1]),
-                                      signed_float_to_ubyte(b_vertex.normal[2]),
-                                      0  # we use ubyte4, we need 4 values
-                                  ),
-                                  "texcoord0": [uv_data[i].uv[0], uv_data[i].uv[1]]}
 
                         # We will calculate the tangents later, once we have everything
+                        positions.append((b_vertex.co[0], b_vertex.co[1], b_vertex.co[2]))
+                        normals.append((b_vertex.normal[0], b_vertex.normal[1], b_vertex.normal[2]))
+                        # Flip vertical UV coordinates so it uses DirectX system
+                        texcoords.append((uv_data[i].uv[0], -uv_data[i].uv[1]))
 
                         if use_bones:
-                            self.process_vertex_bones(obj, b_vertex, vertex)
+                            self.process_vertex_bones(obj, b_vertex, vertices)
 
-                        vertices.append(vertex)
+                        indices_map.append(index)
                         triangles[t][i - face.loop_start] = current_processed_index
-
                         new_vertex_indices[index].append(current_processed_index)
                         current_processed_index += 1
 
             calculate_tangents(vertices, triangles)
 
-            # Flip vertical UV coordinates so it uses DirectX system
-            for v in vertices:
-                v["texcoord0"][1] = -v["texcoord0"][1]
+        vertices['position'] = positions
+        vertices['normal'] = normals
+        if use_texcoord:
+            vertices['texcoord0'] = texcoords
+            vertices['tangent'] = tangents
+        # blendIndices and blendWeights are already added by process_vertex_bones()
 
-        # Now convert them into the vertex class
-        vertex_class = rw4_enums.create_rw_vertex_class(vertex_elements)
-        processed_vertices = [vertex_class(**v) for v in vertices]
+        return vertices, triangles, indices_map
 
-        return processed_vertices, triangles, new_vertex_indices
-
-    def create_vertex_description(self, use_texcoord, use_bones):
+    def create_vertex_description(self, use_texcoord: bool, use_bones: bool):
         """
         Creates the VertexDescription object used to define a certain vertex format.
         The elements will be:
@@ -340,6 +375,7 @@ class RW4Exporter:
          - tangent (if use_texcoord)
          - blendIndices (if use_bones)
          - blendWeights (if use_bones)
+
         :param use_texcoord: If UV texcoords must be included in this description.
         :param use_bones: If bone indices/weights must be included in this description.
         :return: The VertexDescription object.
@@ -426,11 +462,138 @@ class RW4Exporter:
 
         return description
 
+    def export_as_vertex_buffer(self, vertices, vertex_desc):
+        """
+        Exports a lsit of vertices as a vertex buffer. This will add to the RW4
+        a VertexBuffer and BaseResource objects containing the vertices data.
+
+        :param vertices: A dictionary of vertex attributes lists.
+        :param vertex_desc: The VertexDescription used for this buffer.
+        :return: The created VertexBuffer object.
+        """
+        vertex_buffer = rw4_base.VertexBuffer(
+            self.render_ware,
+            vertex_description=vertex_desc,
+            base_vertex_index=0,
+            vertex_count=len(vertices),
+            field_10=8,
+            vertex_size=vertex_desc.vertex_size
+        )
+
+        vertex_buffer.vertex_data = rw4_base.BaseResource(
+            self.render_ware,
+            data=write_vertex_buffer(vertices, vertex_desc.vertex_elements),
+        )
+
+        self.render_ware.add_object(vertex_buffer)
+        self.render_ware.add_object(vertex_buffer.vertex_data)
+
+        return vertex_buffer
+
+    def export_as_blend_shape(self, vertices, faces, indices_map, obj):
+        blend_shape = rw4_base.BlendShape(
+            self.render_ware,
+            object_id=file_io.get_hash(obj.name),
+            shape_ids=[file_io.get_hash(block.name) for block in obj.data.shape_keys.key_blocks[1:]]
+        )
+
+        vertex_count = len(vertices['position'])
+
+        blend_shape_buffer = rw4_base.BlendShapeBufer(
+            self.render_ware,
+            shape_count=len(obj.data.shape_keys.key_blocks) - 1,
+            vertex_count=vertex_count
+        )
+
+        positions = vertices['position']
+
+        data = file_io.ArrayFileWriter()
+        blend_shape_buffer.offsets[rw4_base.BlendShapeBuffer.INDEX_POSITION] = data.tell()
+
+        for v in positions:
+            data.pack('<fff', *v)
+            data.write_int(0)
+
+        for shape_key in obj.data.shape_keys.key_blocks[1:]:
+            for i in range(vertex_count):
+                data.pack('<fff', *(Vector(shape_key.data[indices_map[i]].co) - Vector(positions[i])))
+                data.write_int(0)
+
+        blend_shape_buffer.offsets[rw4_base.BlendShapeBuffer.INDEX_NORMAL] = data.tell()
+        for v in vertices['normal']:
+            data.pack('<fff', *v)
+            data.write_int(0)
+
+        tangent_data = file_io.ArrayFileWriter() if 'tangent' in vertices else None
+        # For normals and tangents, we need to use to_mesh using the shape influence
+        # Save the old ones to restore them later
+        shape_values = [shape_key.value for shape_key in obj.data.shape_keys.key_blocks[1:]]
+
+        for shape_key in obj.data.shape_keys.key_blocks[1:]:
+            shape_key.value = 0.0
+
+        for shape_key in obj.data.shape_keys.key_blocks[1:]:
+            shape_key.value = 1.0
+            blender_mesh = obj.to_mesh()
+
+            for i in range(vertex_count):
+                data.pack('<fff', *blender_mesh.vertices[i].normal)
+
+            if tangent_data is not None:
+                blended_vertices = dict(*shape_values)
+                blended_vertices['position'] = [blender_mesh.vertices[indices_map[i]].co for i in range(vertex_count)]
+                blended_vertices['normal'] = [blender_mesh.vertices[indices_map[i]].normal for i in range(vertex_count)]
+                calculate_tangents(blended_vertices, faces)
+
+            obj.to_mesh_clear()
+            shape_key.value = 0.0
+
+        for shape_key, value in zip(obj.data.shape_keys.key_blocks[1:], shape_values):
+            shape_key.value = value
+
+        if 'tangent' in vertices:
+            blend_shape_buffer.offsets[rw4_base.BlendShapeBuffer.INDEX_TANGENT] = data.tell()
+            data.write(tangent_data.buffer)
+
+        if 'texcoord0' in vertices:
+            blend_shape_buffer.offsets[rw4_base.BlendShapeBuffer.INDEX_TEXCOORD] = data.tell()
+            for v in vertices['texcoord0']:
+                data.pack('<ff', *v)
+                data.write_int(0)
+                data.write_int(1)
+
+        if 'blendIndices' in vertices:
+            blend_shape_buffer.offsets[rw4_base.BlendShapeBuffer.INDEX_BLENDINDICES] = data.tell()
+            for v in vertices['blendIndices']:
+                data.pack('<HHHH', *v)
+
+        if 'blendWeights' in vertices:
+            blend_shape_buffer.offsets[rw4_base.BlendShapeBuffer.INDEX_BLENDWEIGHTS] = data.tell()
+            for v in vertices['blendWeights']:
+                data.pack('<ffff', *v)
+
+        blend_shape_buffer.data = data.buffer
+        self.render_ware.add_object(blend_shape)
+        self.render_ware.add_object(blend_shape_buffer)
+
+
     def export_mesh_object(self, obj):
+        """
+        Exports a Blender mesh into the RW4.
+
+        Each Blender mesh will have it's own vertex and indices buffers. If the object uses shape keys, a
+        BlendShape buffer will be used instead; when that is the case, only one Blender mesh can be exported.
+
+        A different mesh, compiled state, and MeshCompiledStateLink will be created for every material
+        in the Blender object.
+
+        :param obj: The Blender mesh object to be exported.
+        """
+
         render_ware = self.render_ware
 
         use_shape_keys = obj.data.shape_keys is not None and len(obj.data.shape_keys.key_blocks) > 1
-        print(use_shape_keys)
+        #TODO throw warning if use_shape_keys and self.b_mesh_objects
 
         blender_mesh = obj.to_mesh()
         mesh_triangulate(blender_mesh)
@@ -445,7 +608,7 @@ class RW4Exporter:
         vertex_desc = self.create_vertex_description(use_texcoord, use_bones)
 
         vertices, triangles, new_indices = \
-            self.process_mesh(obj, blender_mesh, use_texcoord, use_bones, vertex_desc.vertex_elements)
+            self.process_mesh(obj, blender_mesh, use_texcoord, use_bones)
 
         # Configure INDEX BUFFER
         index_buffer = rw4_base.IndexBuffer(
@@ -459,26 +622,16 @@ class RW4Exporter:
         )
         # We will set the buffer data later, after we have ordered them by material
 
-        # Configure VERTEX BUFFER
+        if use_shape_keys:
+            self.export_as_blend_shape(vertices, new_indices, vertex_desc)
+            vertex_buffer = None
 
-        vertex_buffer = rw4_base.VertexBuffer(
-            render_ware,
-            vertex_description=vertex_desc,
-            base_vertex_index=0,
-            vertex_count=len(vertices),
-            field_10=8,
-            vertex_size=vertex_desc.vertex_size
-        )
-
-        vertex_buffer.vertex_data = rw4_base.BaseResource(
-            render_ware,
-            data=write_vertex_buffer(vertices, vertex_desc.vertex_elements),
-        )
+        else:
+            vertex_buffer = self.export_as_vertex_buffer(vertices, vertex_desc)
 
         index_data = []
 
-        for material_index in range(len(obj.material_slots)):
-
+        for material_index, blender_material in enumerate(obj.material_slots):
             first_index = len(index_data)
             triangle_count = 0
 
@@ -525,13 +678,13 @@ class RW4Exporter:
                 )
                 mesh_link.compiled_states.append(compiled_state)
 
-                material_data = obj.material_slots[material_index].material.rw4
+                material_data = blender_material.material.rw4
                 active_material = rw4_material_config.get_active_material(material_data)
 
                 if active_material is not None:
                     material_builder = active_material.material_class.get_material_builder(self, material_data)
 
-                    material_builder.vertex_description = vertex_buffer.vertex_description
+                    material_builder.vertex_description = vertex_desc
                     material_builder.primitive_type = rw4_enums.D3DPT_TRIANGLELIST
 
                     material_builder.write(render_ware, compiled_state.data)
@@ -546,25 +699,28 @@ class RW4Exporter:
             data=write_index_buffer(index_data, index_buffer.format)
         )
 
-        # When it's only for exporting we must remove it
-        # BUT remove it after we have used its data
-        obj.to_mesh_clear()
-
         # Add all the objects we just created
         render_ware.add_object(index_buffer)
         render_ware.add_object(index_buffer.index_data)
-        render_ware.add_object(vertex_buffer)
-        render_ware.add_object(vertex_buffer.vertex_data)
-        render_ware.add_object(vertex_buffer.vertex_description)
+        render_ware.add_object(vertex_desc)
 
         # Add required things for TriangleKDTreeProcedural
-        self.vertices = [v.position for v in vertices]
 
-        vertex_count = len(vertices)
+        # How many vertices have previous objects added?
+        previous_vertex_count = len(self.vertices)
+        # Copy so it doesn't get deleted when removing temporary mesh
+        self.vertices += [(v[0], v[1], v[2]) for v in vertices['position']]
 
-        for face in triangles:
-            self.triangles.append((face[0] + vertex_count, face[1] + vertex_count, face[2] + vertex_count, 0))
+        for i in range(len(index_data), step=3):
+            self.triangles.append((index_data[i] + previous_vertex_count,
+                                   index_data[i+1] + previous_vertex_count,
+                                   index_data[i+2] + previous_vertex_count,
+                                   0))
             self.triangle_unknowns.append(choice(range(1, 13, 2)))
+
+        # When it's only for exporting we must remove it
+        # BUT remove it after we have used its data
+        obj.to_mesh_clear()
 
     def create_animation_skin(self, b_bone):
         pose = rw4_base.AnimationSkin.BonePose()
@@ -798,11 +954,22 @@ class RW4Exporter:
         return [minBBox, maxBBox]
 
     def export_bbox(self):
-        if len(self.b_mesh_objects) > 0:
-            self.bound_box = rw4_base.BoundingBox(self.render_ware, bound_box=self.calc_global_bbox())
+        """
+        Exports a BoundingBox object which contains the bounding boxes of all exported meshes.
+        This must be called after the meshes have been exported.
+        """
+        if self.b_mesh_objects:
+            self.bound_box = rw4_base.BoundingBox(
+                self.render_ware,
+                bound_box=self.calc_global_bbox()
+            )
             self.render_ware.add_object(self.bound_box)
 
     def export_kdtree(self):
+        """
+        Creates and exports the TriangleKDTreeProcedural based on the data collected from exported meshes.
+        This must be called after the meshes and the bounding box have been exported.
+        """
         kdtree = rw4_base.TriangleKDTreeProcedural(self.render_ware)
         kdtree.bound_box = self.bound_box
         kdtree.bound_box_2 = self.bound_box
@@ -819,7 +986,7 @@ def export_rw4(file):
 
     exporter = RW4Exporter()
 
-    # first find the skeleton (if any)
+    # First process and export the skeleton (if any)
     for obj in bpy.context.scene.objects:
         if obj.type == 'ARMATURE':
             exporter.export_armature_object(obj)

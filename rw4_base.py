@@ -9,7 +9,7 @@ __author__ = 'Eric'
 
 import struct
 from collections import namedtuple
-from .file_io import FileReader, FileWriter, ArrayFileReader
+from .file_io import FileReader, FileWriter, ArrayFileReader, write_alignment
 from . import rw4_enums
 
 
@@ -245,11 +245,6 @@ class RenderWare4:
                 obj.read(file)
 
     def write(self, file: FileWriter):
-        def write_alignment(alignment):
-            file_pos = file.tell()
-            padding = ((file_pos + alignment - 1) & ~(alignment - 1)) - file_pos
-            file.write(bytearray(padding))
-
         # First we need to create the list with all the type_codes
         self.header.section_count = len(self.objects)
 
@@ -284,7 +279,7 @@ class RenderWare4:
         for obj in self.objects:
             if obj.type_code != BaseResource.type_code:
                 # write padding so it is aligned
-                write_alignment(obj.alignment)
+                write_alignment(file, obj.alignment)
 
                 obj.section_info.p_data = file.tell()
                 obj.write(file)
@@ -1670,7 +1665,7 @@ class BlendShapeBuffer(RWObject):
         super().__init__(render_ware)
         self.shape_count = shape_count
         self.vertex_count = vertex_count
-        self.offsets = []
+        self.offsets = [-1] * 11
         self.data = None
 
     def read(self, file: FileReader):
@@ -1679,8 +1674,8 @@ class BlendShapeBuffer(RWObject):
 
         offsets = file.unpack('<11I')
         # The offsets must be relative to self.data
-        for offset in offsets:
-            self.offsets.append(-1 if offset == 0 else offset - 64)
+        for i, offset in enumerate(offsets):
+            self.offsets[i] = -1 if offset == 0 else offset - 64
 
         self.shape_count = file.read_int()
         self.vertex_count = file.read_int()
@@ -1698,6 +1693,9 @@ class BlendShapeBuffer(RWObject):
         file.write_int(self.vertex_count)
         file.write_int(0)
         file.write_int(self.shape_count)
+
+        write_alignment(file, 16)
+        file.write(self.data)
 
 
 class DDSTexture:
