@@ -174,12 +174,12 @@ class RenderWare4:
         else:
             raise NameError("Unsupported index %x" % index)
 
-    def get_index(self, rw_object, section_type=INDEX_OBJECT):
-        if section_type == INDEX_OBJECT:
+    def get_index(self, rw_object, index_type=INDEX_OBJECT):
+        if index_type == INDEX_OBJECT:
             if rw_object is None:
                 return -1
             return self.objects.index(rw_object)
-        elif section_type == INDEX_SUB_REFERENCE:
+        elif index_type == INDEX_SUB_REFERENCE:
             index = INDEX_SUB_REFERENCE << 0x16
             for reference in self.header.section_sub_references.sub_references:
                 if reference.rw_object == rw_object:
@@ -187,10 +187,10 @@ class RenderWare4:
                 index += 1
             else:
                 return -1
-        elif section_type == INDEX_NO_OBJECT and rw_object is None:
+        elif index_type == INDEX_NO_OBJECT and rw_object is None:
             return INDEX_NO_OBJECT << 0x16
         else:
-            raise NameError("Unsupported get_index for sectionType %x" % section_type)
+            raise NameError(f"Unsupported get_index for index_type {index_type}")
 
     def create_object(self, type_code):
         """
@@ -301,7 +301,7 @@ class RenderWare4:
         for obj in self.objects:
             if obj.type_code == BaseResource.type_code:
                 # write padding so it is aligned
-                write_alignment(obj.alignment)
+                write_alignment(file, obj.alignment)
 
                 start_pos = file.tell()
                 obj.section_info.p_data = start_pos - self.header.p_buffer_data
@@ -901,7 +901,11 @@ class Mesh(RWObject):
         file.write_int(self.vertex_count)
 
         for buffer in self.vertex_buffers:
-            file.write_int(self.render_ware.get_index(buffer))
+            if buffer is None:
+                index = self.render_ware.get_index(None, INDEX_NO_OBJECT)
+            else:
+                index = self.render_ware.get_index(buffer)
+            file.write_int(index)
 
 
 class MeshCompiledStateLink(RWObject):
@@ -1687,7 +1691,10 @@ class BlendShapeBuffer(RWObject):
     def write(self, file: FileWriter):
         file.write_int(1)
         for offset in self.offsets:
-            file.write_uint(offset + 64)
+            if offset == -1:
+                file.write_int(0)
+            else:
+                file.write_uint(offset + 64)
 
         file.write_int(self.shape_count)
         file.write_int(self.vertex_count)

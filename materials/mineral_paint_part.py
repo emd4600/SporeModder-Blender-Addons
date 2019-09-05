@@ -117,7 +117,7 @@ class MineralPaintPart(RWMaterial):
             0,  # firstBone
             exporter.get_bone_count(),  # numBones
             0,
-            render_ware.getIndex(None, section_type=rw4_base.INDEX_NO_OBJECT),  # ?
+            render_ware.getIndex(None, rw4_base.INDEX_NO_OBJECT),  # ?
             exporter.get_skin_matrix_buffer_index()))
 
         material.add_shader_data(SHADER_DATA['region'], struct.pack('<ii', material_data.paint_region, 0x00C7E300))

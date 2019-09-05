@@ -184,6 +184,9 @@ class ArrayFileWriter(FileWriter):
     def pack(self, fmt, *args):
         self.buffer.extend(struct.pack(fmt, *args))
 
+    def tell(self):
+        return len(self.buffer)
+
     def seek(self, n):
         raise NotImplementedError()
 

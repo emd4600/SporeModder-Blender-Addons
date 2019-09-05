@@ -65,7 +65,7 @@ class SkinPaintPart(RWMaterial):
             0,  # firstBone
             exporter.get_bone_count(),  # numBones
             0,
-            render_ware.get_index(None, section_type=rw4_base.INDEX_NO_OBJECT),  # ?
+            render_ware.get_index(None, rw4_base.INDEX_NO_OBJECT),  # ?
             exporter.get_skin_matrix_buffer_index()
         ))
 

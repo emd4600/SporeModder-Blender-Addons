@@ -204,6 +204,8 @@ def import_gmdl(file, import_skeleton):
         max_blend_index = 0
 
         v_buffer = mesh.vertex_buffer
+
+        import_skeletons = v_buffer.vertex_format.has_element(rw4_enums.RWDECL_BLENDINDICES)
         b_mesh.vertices.add(len(v_buffer.vertices))
         for i, v in enumerate(v_buffer.vertices):
             b_mesh.vertices[i].co = v.position
@@ -232,7 +234,7 @@ def import_gmdl(file, import_skeleton):
                 uv = v_buffer.vertices[loop.vertex_index].texcoord0
                 uv_layer.data[loop.index].uv = (uv[0], -uv[1])
 
-        if import_skeleton and v_buffer.vertex_format.has_element(rw4_enums.RWDECL_BLENDINDICES):
+        if import_skeleton:
             for i in range(max_blend_index//3 + 1):
                 b_obj.vertex_groups.new(name=f"bone-{i}")
 
