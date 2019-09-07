@@ -48,7 +48,7 @@ class SkinPaintPart(RWMaterial):
 
         RWMaterial.set_general_settings(material, rw4_material, rw4_material.material_data_SkinPaintPart)
 
-        material.shader_id = 0x80000004
+        material.shader_id = 0x80000005 if exporter.is_blend_shape() else 0x80000004
         material.unknown_booleans.append(True)  # the rest are going to be False
 
         # -- RENDER STATES -- #
@@ -57,20 +57,28 @@ class SkinPaintPart(RWMaterial):
 
         # -- SHADER CONSTANTS -- #
 
-        # In the shader, skinWeights.x = numWeights
-        material.add_shader_data(SHADER_DATA['skinWeights'], struct.pack('<i', 4))
-
-        material.add_shader_data(SHADER_DATA['skinBones'], struct.pack(
-            '<iiiii',
-            0,  # firstBone
-            exporter.get_bone_count(),  # numBones
-            0,
-            render_ware.get_index(None, rw4_base.INDEX_NO_OBJECT),  # ?
-            exporter.get_skin_matrix_buffer_index()
-        ))
-
         # Used for selecting skinPaint shader
         material.add_shader_data(0x216, struct.pack('<i', 0))
+
+        if exporter.has_skeleton():
+            # In the shader, skinWeights.x = numWeights
+            material.add_shader_data(SHADER_DATA['skinWeights'], struct.pack('<i', 4))
+
+            material.add_shader_data(SHADER_DATA['skinBones'], struct.pack(
+                '<iiiii',
+                0,  # firstBone
+                exporter.get_bone_count(),  # numBones
+                0,
+                render_ware.get_index(None, rw4_base.INDEX_NO_OBJECT),  # ?
+                exporter.get_skin_matrix_buffer_index()
+            ))
+
+        if exporter.is_blend_shape():
+            material.add_shader_data(0x5, struct.pack('<i', 0))
+            material.add_shader_data(0x200, struct.pack('<ii',
+                                                        len(exporter.blend_shape.shape_ids),
+                                                        render_ware.get_index(exporter.blend_shape,
+                                                                              rw4_base.INDEX_SUB_REFERENCE)))
 
         # -- TEXTURE SLOTS -- #
 
@@ -83,7 +91,7 @@ class SkinPaintPart(RWMaterial):
 
     @staticmethod
     def parse_material_builder(material: RWMaterialBuilder, rw4_material):
-        if material.shader_id != 0x80000004:
+        if material.shader_id != 0x80000004 and material.shader_id != 0x80000005:
             return False
 
         shader_data = material.get_shader_data(0x216)

@@ -205,7 +205,7 @@ def import_gmdl(file, import_skeleton):
 
         v_buffer = mesh.vertex_buffer
 
-        import_skeletons = v_buffer.vertex_format.has_element(rw4_enums.RWDECL_BLENDINDICES)
+        import_skeleton = v_buffer.vertex_format.has_element(rw4_enums.RWDECL_BLENDINDICES)
         b_mesh.vertices.add(len(v_buffer.vertices))
         for i, v in enumerate(v_buffer.vertices):
             b_mesh.vertices[i].co = v.position

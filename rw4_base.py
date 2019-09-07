@@ -1086,13 +1086,13 @@ class MorphHandle(RWObject):
     type_code = 0xff0000
     alignment = 4
 
-    def __init__(self, render_ware: RenderWare4, handle_id=0, default_time=0.0, animation=None):
+    def __init__(self, render_ware: RenderWare4, handle_id=0, default_progress=0.0, animation=None):
         super().__init__(render_ware)
         self.handle_id = handle_id
         self.field_4 = 0
         self.start_pos = [0.0, 0.0, 0.0]
         self.end_pos = [0.0, 0.0, 0.0]
-        self.default_time = default_time
+        self.default_progress = default_progress
         self.animation = animation
 
     def read(self, file):
@@ -1104,7 +1104,7 @@ class MorphHandle(RWObject):
         self.end_pos[0] = file.read_double()
         self.end_pos[1] = file.read_double()
         self.end_pos[2] = file.read_double()
-        self.default_time = file.read_float()
+        self.default_progress = file.read_float()
         self.animation = self.render_ware.get_object(file.read_int())
 
     def write(self, file):
@@ -1116,7 +1116,7 @@ class MorphHandle(RWObject):
         file.write_double(self.end_pos[0])
         file.write_double(self.end_pos[1])
         file.write_double(self.end_pos[2])
-        file.write_float(self.default_time)
+        file.write_float(self.default_progress)
         file.write_int(self.render_ware.get_index(self.animation))
 
 
@@ -1463,7 +1463,7 @@ class KeyframeAnim(RWObject):
     type_code = 0x70001
     alignment = 16
 
-    frames_per_second = 24
+    FPS = 24
 
     def __init__(self, render_ware: RenderWare4, skeleton_id=0, length=0.0):
         super().__init__(render_ware)
@@ -1625,14 +1625,16 @@ class BlendShape(RWObject):
         super().__init__(render_ware)
         self.id = object_id
         self.shape_ids = [] if shape_ids is None else shape_ids
+        self.shape_times_index = render_ware.get_index(None, INDEX_NO_OBJECT)
+        self.shape_ids_index = render_ware.get_index(None, INDEX_NO_OBJECT)
 
     def read(self, file: FileReader):
         file.read_int()  # gets replaced by code
         file.read_int()  # pointer to function, gets replaced
 
-        file.read_int()  # index to subreference in this same object
+        self.shape_times_index = file.read_int()  # index to subreference in this same object
         shape_count = file.read_int()
-        file.read_int()  # index to subreference in this same object
+        self.shape_ids_index = file.read_int()  # index to subreference in this same object
         file.read_int()  # shape count again
         self.id = file.read_uint()
 
@@ -1650,7 +1652,7 @@ class BlendShape(RWObject):
         file.write_int(len(self.shape_ids))
         file.write_uint(self.id)
 
-        file.pack(f'{len(self.shape_ids)}x')
+        file.pack(f'{len(self.shape_ids)*4}x')
         file.pack(f'{len(self.shape_ids)}I', *self.shape_ids)
 
 

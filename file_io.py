@@ -277,6 +277,8 @@ SPORE_NAMES = {
     0x7BD05F71: 'root',
     0xC045A9A3: 'tool',
     0x4CF9B596: 'base',
+    0x6DFE676D: 'body',
+    0x002AE8E9: 'spike',
     0x050C5D2F: '0',
     0x050C5D2E: '1',
     0x050C5D2D: '2',
@@ -287,6 +289,16 @@ SPORE_NAMES = {
     0x050C5D28: '7',
     0x050C5D27: '8',
     0x050C5D26: '9',
+    0x7364D4C2: 'Key 0',
+    0x7364D4C3: 'Key 1',
+    0x7364D4C0: 'Key 2',
+    0x7364D4C1: 'Key 3',
+    0x7364D4C6: 'Key 4',
+    0x7364D4C7: 'Key 5',
+    0x7364D4C4: 'Key 6',
+    0x7364D4C5: 'Key 7',
+    0x7364D4CA: 'Key 8',
+    0x7364D4CB: 'Key 9',
 }
 
 

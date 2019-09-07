@@ -5,6 +5,7 @@ from . import rw4_base, rw4_enums, file_io
 from . import rw4_material_config
 from mathutils import Matrix, Quaternion, Vector
 from random import choice
+import re
 
 
 def show_message_box(message: str, title: str, icon='ERROR'):
@@ -172,6 +173,20 @@ class RW4Exporter:
         self.vertices = []
         self.triangle_unknowns = []
 
+        self.blend_shape = None
+
+    def has_skeleton(self):
+        """
+        :return: True if this models uses a skeleton, False otherwise.
+        """
+        return self.b_armature_object is not None
+
+    def is_blend_shape(self):
+        """
+        :return: True if this models uses a blend shape, False otherwise.
+        """
+        return self.blend_shape is not None
+
     def get_bone_count(self):
         """
         :return: The amount of bones in the skeleton of this RW4, or 0 if there is no skeleton.
@@ -338,7 +353,7 @@ class RW4Exporter:
                     # Has a vertex with these UV coordinates been already processed?
                     for processed_index in new_vertex_indices[index]:
                         uv = texcoords[processed_index]
-                        if uv[0] == uv_data[i].uv[0] and uv[1] == uv_data[i].uv[1]:
+                        if uv[0] == uv_data[i].uv[0] and uv[1] == -uv_data[i].uv[1]:
                             triangles[t][i - face.loop_start] = processed_index
                             break
 
@@ -466,7 +481,7 @@ class RW4Exporter:
 
     def export_as_vertex_buffer(self, vertices, vertex_desc):
         """
-        Exports a lsit of vertices as a vertex buffer. This will add to the RW4
+        Exports a list of vertices as a vertex buffer. This will add to the RW4
         a VertexBuffer and BaseResource objects containing the vertices data.
 
         :param vertices: A dictionary of vertex attributes lists.
@@ -504,11 +519,14 @@ class RW4Exporter:
         :param obj: The Blender mesh object being exported.
         """
         #TODO remove influence from bones, to avoid problems when using to_mesh
-        blend_shape = rw4_base.BlendShape(
+        self.blend_shape = rw4_base.BlendShape(
             self.render_ware,
             object_id=file_io.get_hash(obj.name),
             shape_ids=[file_io.get_hash(block.name) for block in obj.data.shape_keys.key_blocks[1:]]
         )
+
+        for block in obj.data.shape_keys.key_blocks:
+            print(block.name)
 
         vertex_count = len(vertices['position'])
 
@@ -594,8 +612,12 @@ class RW4Exporter:
                 data.pack('<ffff', *v)
 
         blend_shape_buffer.data = data.buffer
-        self.render_ware.add_object(blend_shape)
+        self.render_ware.add_object(self.blend_shape)
         self.render_ware.add_object(blend_shape_buffer)
+
+        self.blend_shape.shape_times_index = self.render_ware.add_sub_reference(self.blend_shape, 0x1C)
+        self.blend_shape.shape_ids_index = \
+            self.render_ware.add_sub_reference(self.blend_shape, 0x1C + len(self.blend_shape.shape_ids) * 4)
 
     def export_mesh_object(self, obj):
         """
@@ -855,102 +877,135 @@ class RW4Exporter:
             # rotation = pose_bone.matrix.to_quaternion() * self.bone_bases[pose_bone.parent.name].abs_bind_pose.to_quaternion().inverted() * pose_bone.parent.rotation_quaternion
             return self.get_total_rotation(pose_bone.parent).inverted() @ pose_bone.matrix.to_quaternion()
 
+    @staticmethod
+    def export_blend_shape_action(action, keyframe_anim):
+        # Shape keys don't use groups
+        for fcurve in action.fcurves:
+            # Ensure keyframes are sorted in chronological order and handles are set correctly
+            fcurve.update()
+
+            channel = rw4_base.AnimationChannel()
+            channel.keyframe_class = rw4_base.BlendFactorKeyframe
+            keyframe_anim.channels.append(channel)
+
+            match = re.search(r'\["([a-zA-Z_\-\s1-9.]+)"\]', fcurve.data_path)
+            channel.channel_id = file_io.get_hash(match.group(1))
+
+            for i, b_keyframe in enumerate(fcurve.keyframe_points):
+                time = b_keyframe.co[0] / rw4_base.KeyframeAnim.FPS
+                value = fcurve.evaluate(b_keyframe.co[0])
+
+                if i == 0 and time != 0.0:
+                    # Ensure the first keyframe is at 0.0, just in case
+                    # It will have the same value as this one
+                    keyframe = channel.new_keyframe(0.0)
+                    keyframe.factor = value
+
+                keyframe = channel.new_keyframe(time)
+                keyframe.factor = value
+
+                if i == len(fcurve.keyframe_points)-1 and time != keyframe_anim.length:
+                    # Ensure the last keyframe is at 'length', just in case
+                    # It will have the same value as this one
+                    keyframe = channel.new_keyframe(keyframe_anim.length)
+                    keyframe.factor = value
+
+    def export_skeleton_action(self, action, keyframe_anim):
+        for group in action.groups:
+            pose_bone = None
+            for b in self.b_armature_object.pose.bones:
+                if b.name == group.name:
+                    pose_bone = b
+
+            if pose_bone is None:
+                show_message_box(f"Animation '{action.name}' has keyframes for unknown bone '{group.name}'",
+                                 "Animation Error")
+                return
+
+            base_bone = self.bone_bases[group.name]
+
+            channel = rw4_base.AnimationChannel(rw4_base.LocRotScaleKeyframe)  # TODO
+            channel.channel_id = file_io.get_hash(group.name)
+            keyframe_anim.channels.append(channel)
+
+            bpy.context.scene.frame_set(0)
+
+            for kf in group.channels[0].keyframe_points:
+                bpy.context.scene.frame_set(int(kf.co[0]))
+
+                keyframe = channel.new_keyframe(kf.co[0] / rw4_base.KeyframeAnim.FPS)
+
+                # baseTransform * keyframeTransform = finalTransform
+                # blenderKeyframe = finalTranform ?
+
+                # translation = pose_bone.matrix.to_translation()
+
+                translation = self.get_bone_translation(pose_bone)
+
+                scale = pose_bone.matrix.to_scale()
+
+                rotation = self.get_bone_rotation(pose_bone)
+
+                #                     if pose_bone.parent is None:
+                #                         rotation = pose_bone.matrix.to_quaternion()
+                #                     else:
+                #                         # rotation = pose_bone.rotation_quaternion * self.bone_bases[pose_bone.parent.name].abs_bind_pose.to_quaternion().inverted()
+                #                         rotation = pose_bone.matrix.to_quaternion() * self.bone_bases[pose_bone.parent.name].abs_bind_pose.to_quaternion().inverted() * pose_bone.parent.rotation_quaternion
+
+                keyframe.set_translation(translation)
+                keyframe.set_scale(scale)
+
+                # keyframe.setRotation(baseBone.abs_bind_pose.to_quaternion().inverted() * pose_bone.matrix.to_quaternion())
+                keyframe.set_rotation(rotation)
+
     def export_actions(self):
-        if self.b_armature_object is None:
-            return
 
-        render_ware = self.render_ware
+        animations_list = rw4_base.Animations(self.render_ware)
 
-        animations_list = rw4_base.Animations(render_ware)
-
-        current_keyframe = bpy.context.scene.frame_current
-
-        for b_action in bpy.data.actions:
-            if len(b_action.fcurves) == 0:
+        for action in bpy.data.actions:
+            if not action.fcurves:
                 continue
 
-            self.b_armature_object.animation_data.action = b_action
+            is_shape_key = action.id_root == 'KEY'
 
-            keyframe_anim = rw4_base.KeyframeAnim(render_ware)
-            keyframe_anim.skeleton_id = file_io.get_hash(self.b_armature_object.name)
-            keyframe_anim.length = b_action.frame_range[1] / rw4_base.KeyframeAnim.frames_per_second
+            # self.b_armature_object.animation_data.action = action
+
+            skeleton_id = self.blend_shape.id if is_shape_key else file_io.get_hash(self.b_armature_object.name)
+
+            keyframe_anim = rw4_base.KeyframeAnim(self.render_ware)
+            keyframe_anim.skeleton_id = skeleton_id
+            keyframe_anim.length = action.frame_range[1] / rw4_base.KeyframeAnim.FPS
             keyframe_anim.flags = 3
 
+            if is_shape_key:
+                RW4Exporter.export_blend_shape_action(action, keyframe_anim)
+            else:
+                self.export_skeleton_action(action, keyframe_anim)
+
             # Now, either add to animations list or to handles
-            if b_action.rw4 is not None and b_action.rw4.is_morph_handle:
-                handle = rw4_base.MorphHandle(render_ware)
-                handle.handle_id = file_io.get_hash(b_action.name)
-                handle.start_pos = b_action.rw4.initial_pos
-                handle.end_pos = b_action.rw4.final_pos
-                handle.default_time = b_action.rw4.default_frame / b_action.frame_range[1]
+            if action.rw4 is not None and action.rw4.is_morph_handle:
+                handle = rw4_base.MorphHandle(self.render_ware)
+                handle.handle_id = file_io.get_hash(action.name)
+                handle.start_pos = action.rw4.initial_pos
+                handle.end_pos = action.rw4.final_pos
+                handle.default_progress = action.rw4.default_frame / action.frame_range[1]
                 handle.animation = keyframe_anim
 
-                render_ware.add_object(handle)
+                self.render_ware.add_object(handle)
 
             else:
-                animations_list.add(file_io.get_hash(b_action.name), keyframe_anim)
+                animations_list.add(file_io.get_hash(action.name), keyframe_anim)
 
-            render_ware.add_object(keyframe_anim)
-            # render_ware.objects.insert(0, keyframe_anim)
+            self.render_ware.add_object(keyframe_anim)
 
-            for group in b_action.groups:
-                pose_bone = None
-                for b in self.b_armature_object.pose.bones:
-                    if b.name == group.name:
-                        pose_bone = b
-
-                if pose_bone is None:
-                    show_message_box(f"Animation '{b_action.name}' has keyframes for unknown bone '{group.name}'",
-                                     "Animation Error")
-                    return
-
-                base_bone = self.bone_bases[group.name]
-
-                channel = rw4_base.AnimationChannel(rw4_base.LocRotScaleKeyframe)  # TODO
-                channel.channel_id = file_io.get_hash(group.name)
-                keyframe_anim.channels.append(channel)
-
-                bpy.context.scene.frame_set(0)
-
-                for kf in group.channels[0].keyframe_points:
-                    bpy.context.scene.frame_set(int(kf.co[0]))
-
-                    keyframe = channel.new_keyframe(kf.co[0] / rw4_base.KeyframeAnim.frames_per_second)
-
-                    # baseTransform * keyframeTransform = finalTransform
-                    # blenderKeyframe = finalTranform ?
-
-                    # translation = pose_bone.matrix.to_translation()
-
-                    translation = self.get_bone_translation(pose_bone)
-
-                    scale = pose_bone.matrix.to_scale()
-
-                    rotation = self.get_bone_rotation(pose_bone)
-
-                    #                     if pose_bone.parent is None:
-                    #                         rotation = pose_bone.matrix.to_quaternion()
-                    #                     else:
-                    #                         # rotation = pose_bone.rotation_quaternion * self.bone_bases[pose_bone.parent.name].abs_bind_pose.to_quaternion().inverted()
-                    #                         rotation = pose_bone.matrix.to_quaternion() * self.bone_bases[pose_bone.parent.name].abs_bind_pose.to_quaternion().inverted() * pose_bone.parent.rotation_quaternion
-
-                    keyframe.set_translation(translation)
-                    keyframe.set_scale(scale)
-
-                    # keyframe.setRotation(baseBone.abs_bind_pose.to_quaternion().inverted() * pose_bone.matrix.to_quaternion())
-                    keyframe.set_rotation(rotation)
-
-        if len(animations_list.animations) > 0:
-            render_ware.add_object(animations_list)
-            render_ware.add_sub_reference(animations_list, 8)
-
-        bpy.context.scene.frame_set(current_keyframe)
+            if animations_list.animations:
+                self.render_ware.add_object(animations_list)
+                self.render_ware.add_sub_reference(animations_list, 8)
 
     def calc_global_bbox(self):
         """
         :return: The bounding box that contains all exported mesh objects.
         """
-
         min_bbox = self.b_mesh_objects[0].bound_box[0]
         max_bbox = self.b_mesh_objects[0].bound_box[6]
         min_bbox = [min_bbox[0], min_bbox[1], min_bbox[2]]
@@ -1000,14 +1055,14 @@ def export_rw4(file):
     # NOTE: We might not use Spore's conventional ordering of RW objects, since it's a lot easier to do it this way.
     # Theoretically, this has no effect on the game so it should work fine.
 
+    current_keyframe = bpy.context.scene.frame_current
+
     exporter = RW4Exporter()
 
     # First process and export the skeleton (if any)
     for obj in bpy.context.scene.objects:
         if obj.type == 'ARMATURE':
             exporter.export_armature_object(obj)
-
-    exporter.export_actions()
 
     for obj in bpy.context.scene.objects:
         if obj.type == 'MESH':
@@ -1016,6 +1071,10 @@ def export_rw4(file):
     exporter.export_bbox()
     exporter.export_kdtree()
 
+    exporter.export_actions()
+
     exporter.render_ware.write(file_io.FileWriter(file))
+
+    bpy.context.scene.frame_set(current_keyframe)
 
     return {'FINISHED'}

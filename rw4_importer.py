@@ -485,11 +485,11 @@ class RW4Importer:
     def import_animation_shape_key(self, animation, b_action):
         for channel in animation.channels:
             #TODO get from animation skeleton id? Theorically there should be a single mesh object
-            key = self.b_meshes[0].shape_keys.key_read_datablocks[get_name(channel.channel_id)]
+            key = self.b_meshes[0].shape_keys.key_blocks[get_name(channel.channel_id)]
             data_path = key.path_from_id('value')
             fcurve = b_action.fcurves.new(data_path)
             for keyframe in channel.keyframes:
-                time = keyframe.time * rw4_base.KeyframeAnim.frames_per_second
+                time = keyframe.time * rw4_base.KeyframeAnim.FPS
                 fcurve.keyframe_points.insert(time, keyframe.factor)
 
     @staticmethod
@@ -524,7 +524,7 @@ class RW4Importer:
                 fcurves_vs.append(fcurve)
 
         for k, kf in enumerate(channel.keyframes):
-            time = kf.time * rw4_base.KeyframeAnim.frames_per_second
+            time = kf.time * rw4_base.KeyframeAnim.FPS
             bpy.context.scene.frame_set(time)  # So that parent.matrix works
 
             transform = channel_keyframes[index][k]
@@ -592,6 +592,8 @@ class RW4Importer:
             self.b_meshes[0].shape_keys.animation_data_create()
             self.b_meshes[0].shape_keys.animation_data.action = b_action
 
+            b_action.id_root = 'KEY'
+
             self.import_animation_shape_key(animation, b_action)
 
         else:
@@ -625,17 +627,12 @@ class RW4Importer:
         return b_action
 
     def import_animations(self):
-        if self.b_armature_object is None:
-            return
-
         anim_objects = self.render_ware.get_objects(rw4_base.Animations.type_code)
         handle_objects = self.render_ware.get_objects(rw4_base.MorphHandle.type_code)
 
         # First create all actions
         if not anim_objects and not handle_objects:
             return
-
-        self.b_armature_object.animation_data_create()
 
         if anim_objects:
             for anim_id in anim_objects[0].animations.keys():
@@ -651,7 +648,8 @@ class RW4Importer:
             b_action.rw4.is_morph_handle = True
             b_action.rw4.initial_pos = handle.start_pos
             b_action.rw4.final_pos = handle.end_pos
-            b_action.rw4.default_frame = int(handle.default_time * 24)
+            b_action.rw4.default_frame = \
+                int(handle.default_progress * handle.animation.length / rw4_base.KeyframeAnim.FPS)
 
         if anim_objects:
             for i, anim in enumerate(anim_objects[0].animations.values()):
