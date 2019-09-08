@@ -917,8 +917,16 @@ class RW4Exporter:
             # rotation = pose_bone.matrix.to_quaternion() * self.bone_bases[pose_bone.parent.name].abs_bind_pose.to_quaternion().inverted() * pose_bone.parent.rotation_quaternion
             return self.get_total_rotation(pose_bone.parent).inverted() @ pose_bone.matrix.to_quaternion()
 
-    @staticmethod
-    def export_blend_shape_action(action, keyframe_anim):
+    def process_blend_shape_action(self, action, keyframe_anim):
+        """
+        Processes a shape key action to fill the data of the KeyframeAnim.
+        All blend shape channels will be added to the animation; if one is not keyframed in the action,
+        it will be added with 0.0 influence.
+        :param action: The Blender action to export.
+        :param keyframe_anim: The keyframe anim where the data will be written.
+        """
+        shape_ids = set(i for i in self.blend_shape.shape_ids)
+
         # Shape keys don't use groups
         for fcurve in action.fcurves:
             # Ensure keyframes are sorted in chronological order and handles are set correctly
@@ -930,6 +938,8 @@ class RW4Exporter:
 
             match = re.search(r'\["([a-zA-Z_\-\s1-9.]+)"\]', fcurve.data_path)
             channel.channel_id = file_io.get_hash(match.group(1))
+
+            shape_ids.remove(channel.channel_id)
 
             for i, b_keyframe in enumerate(fcurve.keyframe_points):
                 time = b_keyframe.co[0] / rw4_base.KeyframeAnim.FPS
@@ -950,7 +960,17 @@ class RW4Exporter:
                     keyframe = channel.new_keyframe(keyframe_anim.length)
                     keyframe.factor = value
 
-    def export_skeleton_action(self, action, keyframe_anim):
+        # Add the remaining ones
+        for shape_id in shape_ids:
+            channel = rw4_base.AnimationChannel()
+            channel.keyframe_class = rw4_base.BlendFactorKeyframe
+            channel.channel_id = shape_id
+            keyframe_anim.channels.append(channel)
+
+            channel.new_keyframe(0.0).factor = 0.0
+            channel.new_keyframe(keyframe_anim.length).factor = 0.0
+
+    def process_skeleton_action(self, action, keyframe_anim):
         for group in action.groups:
             pose_bone = None
             for b in self.b_armature_object.pose.bones:
@@ -1028,9 +1048,9 @@ class RW4Exporter:
             keyframe_anim.flags = 3
 
             if is_shape_key:
-                RW4Exporter.export_blend_shape_action(action, keyframe_anim)
+                self.process_blend_shape_action(action, keyframe_anim)
             else:
-                self.export_skeleton_action(action, keyframe_anim)
+                self.process_skeleton_action(action, keyframe_anim)
 
             # Now, either add to animations list or to handles
             if action.rw4 is not None and action.rw4.is_morph_handle:
