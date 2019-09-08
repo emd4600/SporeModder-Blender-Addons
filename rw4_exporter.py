@@ -1,7 +1,7 @@
 __author__ = 'Eric'
 
 import bpy
-from . import rw4_base, rw4_enums, file_io
+from . import rw4_base, rw4_enums, file_io, rw4_validation
 from . import rw4_material_config
 from mathutils import Matrix, Quaternion, Vector
 from random import choice
@@ -11,6 +11,14 @@ import re
 def show_message_box(message: str, title: str, icon='ERROR'):
     def draw(self, context):
         self.layout.label(text=message)
+
+    bpy.context.window_manager.popup_menu(draw, title=title, icon=icon)
+
+
+def show_multi_message_box(messages, title: str, icon='ERROR'):
+    def draw(self, context):
+        for message in messages:
+            self.layout.label(text=message)
 
     bpy.context.window_manager.popup_menu(draw, title=title, icon=icon)
 
@@ -155,6 +163,9 @@ class RW4Exporter:
 
     def __init__(self):
         self.render_ware = rw4_base.RenderWare4()
+
+        self.warnings = set()
+
         self.added_textures = {}
 
         self.b_armature_object = None
@@ -220,17 +231,9 @@ class RW4Exporter:
 
         raster = rw4_base.Raster(self.render_ware)
         data_buffer = rw4_base.BaseResource(self.render_ware)
+        use_emtpy_texture = True
 
-        if path is None or not path:
-            # Just create an empty texture
-            raster.width = 64
-            raster.height = 64
-            raster.mipmap_levels = 7
-            raster.texture_format = rw4_enums.D3DFMT_DXT5
-
-            data_buffer.data = bytearray(5488)  # ?
-
-        else:
+        if path:
             try:
                 with open(bpy.path.abspath(path), 'rb') as file:
                     dds_texture = rw4_base.DDSTexture()
@@ -238,17 +241,25 @@ class RW4Exporter:
 
                     raster.from_dds(dds_texture)
                     data_buffer.data = dds_texture.data
+                    use_emtpy_texture = False
+
+            except FileNotFoundError as e:
+                error = rw4_validation.error_texture_does_not_exist(path)
+                if error not in self.warnings:
+                    self.warnings.add(error)
+
             except OSError as e:
-                #TODO convert to warning
-                show_message_box(str(e), "Texture Error")
+                error = rw4_validation.error_texture_error(path)
+                if error not in self.warnings:
+                    self.warnings.add(error)
 
-                # Just create an empty texture
-                raster.width = 64
-                raster.height = 64
-                raster.mipmap_levels = 7
-                raster.texture_format = rw4_enums.D3DFMT_DXT5
-
-                data_buffer.data = bytearray(5488)  # ?
+        if use_emtpy_texture:
+            # Just create an empty texture
+            raster.width = 64
+            raster.height = 64
+            raster.mipmap_levels = 7
+            raster.texture_format = rw4_enums.D3DFMT_DXT5
+            data_buffer.data = bytearray(5488)  # ?
 
         self.added_textures[path] = raster
 
@@ -268,26 +279,29 @@ class RW4Exporter:
         :param b_vertex: The Blender vertex.
         :param vertex_dict: A dictionary of vertex attributes lists.
         """
-        indices = []
-        weights = []
-        size = 0
-        for gr in b_vertex.groups:
-            for index, b_bone in enumerate(self.b_armature_object.data.bones):
-                if b_bone.name == obj.vertex_groups[gr.group].name:
-                    indices.append(index * 3)
-                    weights.append(round(gr.weight * 255))
-
-                    size += 1
-                    if size == 4:
-                        break
-
-        for i in range(size, 4):
-            indices.append(0)
-            weights.append(0)
-
+        indices = [0, 0, 0, 0]
         # Special case: if there are no bone weights, we must do this or the model will be invisible
-        if size == 0:
-            weights[0] = 255
+        weights = [255, 0, 0, 0]
+        total_weight = 0
+        for i, gr in enumerate(b_vertex.groups):
+            v_group = obj.vertex_groups[gr.group]
+            index = next(i for i, bone in enumerate(self.b_armature_object.data.bones) if bone.name == v_group.name)
+
+            if i == 4:
+                error = rw4_validation.error_vertex_bone_limit(obj)
+                if error not in self.warnings:
+                    self.warnings.add(error)
+                break
+
+            weight = round(gr.weight * 255)
+            total_weight += weight
+            indices[i] = index * 3
+            weights[i] = weight
+
+        if total_weight > 255:
+            error = rw4_validation.error_not_normalized(obj)
+            if error not in self.warnings:
+                self.warnings.add(error)
 
         vertex_dict['blendIndices'].append(indices)
         vertex_dict['blendWeights'].append(weights)
@@ -317,6 +331,10 @@ class RW4Exporter:
         texcoords = []
         indices_map = []
         vertices = {'position': positions, 'normal': normals}
+
+        if use_bones:
+            vertices['blendIndices'] = []
+            vertices['blendWeights'] = []
 
         if not use_texcoord:
             # No need to process if we don't have UV coords
@@ -378,7 +396,10 @@ class RW4Exporter:
             vertices['texcoord0'] = texcoords
             calculate_tangents(vertices, triangles)
 
-        # blendIndices and blendWeights are already added by process_vertex_bones()
+        if len(vertices) > 65536:
+            error = rw4_validation.error_vertices_limit(obj)
+            if error not in self.warnings:
+                self.warnings.add(error)
 
         return vertices, triangles, indices_map
 
@@ -525,9 +546,6 @@ class RW4Exporter:
             shape_ids=[file_io.get_hash(block.name) for block in obj.data.shape_keys.key_blocks[1:]]
         )
 
-        for block in obj.data.shape_keys.key_blocks:
-            print(block.name)
-
         vertex_count = len(vertices['position'])
 
         blend_shape_buffer = rw4_base.BlendShapeBuffer(
@@ -609,7 +627,7 @@ class RW4Exporter:
         if 'blendWeights' in vertices:
             blend_shape_buffer.offsets[rw4_base.BlendShapeBuffer.INDEX_BLENDWEIGHTS] = data.tell()
             for v in vertices['blendWeights']:
-                data.pack('<ffff', *v)
+                data.pack('<ffff', v[0]/255.0, v[1]/255.0, v[2]/255.0, v[3]/255.0)
 
         blend_shape_buffer.data = data.buffer
         self.render_ware.add_object(self.blend_shape)
@@ -631,11 +649,31 @@ class RW4Exporter:
 
         :param obj: The Blender mesh object to be exported.
         """
-
         render_ware = self.render_ware
 
+        if obj.matrix_world != Matrix.Identity(4):
+            error = rw4_validation.error_transforms(obj)
+            if error not in self.warnings:
+                self.warnings.add(error)
+            # Still, process the model as more warnings might arise, so don't return
+
+        if not obj.material_slots:
+            error = rw4_validation.error_no_material(obj)
+            if error not in self.warnings:
+                self.warnings.add(error)
+            # Still, process the model as more warnings might arise, so don't return
+
         use_shape_keys = obj.data.shape_keys is not None and len(obj.data.shape_keys.key_blocks) > 1
-        #TODO throw warning if use_shape_keys and self.b_mesh_objects
+        if use_shape_keys and self.b_mesh_objects:
+            error = rw4_validation.error_shape_keys_multi_models()
+            if error not in self.warnings:
+                self.warnings.add(error)
+            return
+
+        if use_shape_keys and not obj.data.shape_keys.use_relative:
+            error = rw4_validation.error_shape_keys_not_relative()
+            if error not in self.warnings:
+                self.warnings.add(error)
 
         blender_mesh = obj.to_mesh()
         mesh_triangulate(blender_mesh)
@@ -647,7 +685,6 @@ class RW4Exporter:
         # For each object, create a vertex and index buffer
 
         # When there is BlendShape, Spore does not add the bone indices to the vertex format, I don't know why
-        #TODO and in the material?
         vertex_desc = self.create_vertex_description(use_texcoord, use_bones and not use_shape_keys)
 
         vertices, triangles, indices_map = self.process_mesh(obj, blender_mesh, use_texcoord, use_bones)
@@ -772,7 +809,10 @@ class RW4Exporter:
 
     def export_armature_object(self, obj):
         if self.b_armature_object is not None:
-            raise NameError("Only one skeleton supported.")
+            error = rw4_validation.error_armature_limit()
+            if error not in self.warnings:
+                self.warnings.add(error)
+            return
 
         self.b_armature_object = obj
         b_armature = self.b_armature_object.data
@@ -966,6 +1006,16 @@ class RW4Exporter:
             if not action.fcurves:
                 continue
 
+            if action.frame_range[0] != 0:
+                error = rw4_validation.error_action_start_frame(action)
+                if error not in self.warnings:
+                    self.warnings.add(error)
+
+            if not action.use_fake_user:
+                error = rw4_validation.error_action_no_fake(action)
+                if error not in self.warnings:
+                    self.warnings.add(error)
+
             is_shape_key = action.id_root == 'KEY'
 
             # self.b_armature_object.animation_data.action = action
@@ -1076,5 +1126,9 @@ def export_rw4(file):
     exporter.render_ware.write(file_io.FileWriter(file))
 
     bpy.context.scene.frame_set(current_keyframe)
+
+    if exporter.warnings:
+        show_multi_message_box(exporter.warnings,
+                               title=f"Exported with {len(exporter.warnings)} warnings", icon="ERROR")
 
     return {'FINISHED'}

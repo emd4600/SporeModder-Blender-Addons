@@ -66,14 +66,8 @@ class ImportGMDL(bpy.types.Operator, ImportHelper):
     def execute(self, context):
         from .gmdl_importer import import_gmdl
 
-        file = open(self.filepath, 'br')
-        result = {'CANCELLED'}
-        try:
-            result = import_gmdl(file, False)
-        finally:
-            file.close()
-
-        return result
+        with open(self.filepath, 'br') as file:
+            return import_gmdl(file, False)
 
 
 class ImportRW4(bpy.types.Operator, ImportHelper):
@@ -107,14 +101,8 @@ class ImportRW4(bpy.types.Operator, ImportHelper):
         settings.import_skeleton = self.import_skeleton
         settings.import_animations = self.import_animations
 
-        file = open(self.filepath, 'br')
-        result = {'CANCELLED'}
-        try:
-            result = import_rw4(file, settings)
-        finally:
-            file.close()
-
-        return result
+        with open(self.filepath, 'br') as file:
+            return import_rw4(file, settings)
 
 
 class ExportRW4(bpy.types.Operator, ExportHelper):
@@ -127,13 +115,8 @@ class ExportRW4(bpy.types.Operator, ExportHelper):
     def execute(self, context):
         from .rw4_exporter import export_rw4
 
-        file = open(self.filepath, 'bw')
-        result = {'CANCELLED'}
-        try:
-            result = export_rw4(file)
-        finally:
-            file.close()
-        return result
+        with open(self.filepath, 'bw') as file:
+            return export_rw4(file)
 
 
 def gmdl_importer_menu_func(self, context):
