@@ -6,7 +6,6 @@ from .file_io import FileReader, ArrayFileReader, get_name
 from mathutils import Matrix, Quaternion, Vector
 import math
 import bpy
-import bmesh
 from collections import OrderedDict
 
 
@@ -115,7 +114,8 @@ class RW4Importer:
         self.b_armature = None
         self.b_armature_object = None
         self.skins_ink = None
-        self.bones = []  # type: List[rw4_base.SkeletonBone]
+        self.bones = []
+        self.skin_data = []
         self.b_animation_actions = []
         self.base_bones = []
         self.animation_bones = {}  # maps ID to list of channels, which are lists of PoseBone keyframes
@@ -344,12 +344,12 @@ class RW4Importer:
         bpy.context.view_layer.objects.active = self.b_armature_object
 
         self.bones = self.skins_ink.skeleton.bones
+        self.skin_data = self.skins_ink.animation_skin.data
         pose_r = []
         pose_t = []
-        for i, bone in enumerate(self.bones):
-            skin = self.skins_ink.animation_skin.data[i]
-            bone.matrix = m = Matrix(skin.matrix.data)
-            bone.translation = t = Vector(skin.translation)
+        for skin in self.skin_data:
+            m = skin.matrix
+            t = skin.translation
             inv_bind_pose = m.inverted().to_4x4()
             inv_bind_pose[0][3] = t[0]
             inv_bind_pose[1][3] = t[1]
@@ -415,14 +415,14 @@ class RW4Importer:
 
                 if channel.keyframe_class == rw4_base.LocRotScaleKeyframe or \
                         channel.keyframe_class == rw4_base.LocRotKeyframe:
-                    r = Quaternion((kf.rot[3], kf.rot[0], kf.rot[1], kf.rot[2]))
-                    t = Vector(kf.loc)
+                    r = kf.rot
+                    t = kf.loc
                 else:
                     r = Quaternion()
                     t = Vector((0, 0, 0))
 
                 if channel.keyframe_class == rw4_base.LocRotScaleKeyframe:
-                    s = Vector(kf.scale)
+                    s = kf.scale
                 else:
                     s = Vector((1.0, 1.0, 1.0))
 
@@ -443,7 +443,7 @@ class RW4Importer:
             previous_loc = Vector((0, 0, 0))
             previous_scale = Vector((1.0, 1.0, 1.0))  # inverse scale
 
-            for c, (pose_bone, bone) in enumerate(zip(pose_bones, self.bones)):
+            for c, (pose_bone, bone, skin) in enumerate(zip(pose_bones, self.bones, self.skin_data)):
                 skip_bone = pose_bone is None
                 if skip_bone:
                     pose_bone = interpolate_pose(animation, time, c, keyframe_poses)
@@ -458,8 +458,8 @@ class RW4Importer:
                 t = previous_rot.transposed() @ pose_bone.t + previous_loc
 
                 if not skip_bone:
-                    dst_r = (bone.matrix @ m).transposed()
-                    dst_t = t + (m.transposed() @ bone.translation)
+                    dst_r = (skin.matrix @ m).transposed()
+                    dst_t = t + (m.transposed() @ skin.translation)
 
                     #for i in range(3):
                     #    print(f"skin_bones_data += struct.pack('ffff', {dst_r[i][0]}, {dst_r[i][1]}, {dst_r[i][2]}, {dst_t[i]})")

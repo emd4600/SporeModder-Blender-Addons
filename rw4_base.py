@@ -8,6 +8,7 @@ This module contains:
 __author__ = 'Eric'
 
 import struct
+from mathutils import Matrix, Vector, Quaternion
 from collections import namedtuple
 from .file_io import FileReader, FileWriter, ArrayFileReader, write_alignment
 from . import rw4_enums
@@ -17,28 +18,6 @@ class ModelError(Exception):
     def __init__(self, message, cause_object=None):
         super().__init__(message)
         self.cause_object = cause_object
-
-
-class RWMatrix:
-    def __init__(self, rows, columns):
-        # We store the columns, rows is just len(self.data)
-        self.columns = columns
-        self.data = []
-        for i in range(0, rows):
-            self.data.append([None] * columns)
-
-    def __getitem__(self, item):
-        return self.data[item]
-
-    def read(self, file: FileReader):
-        for i in range(0, len(self.data)):
-            for j in range(0, self.columns):
-                self.data[i][j] = file.read_float()
-
-    def write(self, file: FileWriter):
-        for i in range(0, len(self.data)):
-            for j in range(0, self.columns):
-                file.write_float(self.data[i][j])
 
 
 class RWHeader:
@@ -767,7 +746,7 @@ class SkinMatrixBuffer(RWObject):
     def __init__(self, render_ware: RenderWare4):
         super().__init__(render_ware)
         self.p_matrix_data = 0  # in file, offset, in the game a pointer to it
-        self.data = []
+        self.data = []   # 4x4 matrices, last row is ignored
         self.field_8 = 0
         self.field_C = 0
 
@@ -777,9 +756,11 @@ class SkinMatrixBuffer(RWObject):
         self.field_8 = file.read_int()
         self.field_C = file.read_int()
 
-        for i in range(0, count):
-            matrix = RWMatrix(3, 4)
-            matrix.read(file)
+        for _ in range(count):
+            matrix = Matrix.Identity(4)
+            for i in range(3):
+                for j in range(4):
+                    matrix[i][j] = file.read_float()
             self.data.append(matrix)
 
     def write(self, file: FileWriter):
@@ -790,7 +771,9 @@ class SkinMatrixBuffer(RWObject):
         file.write_int(self.field_C)
 
         for matrix in self.data:
-            matrix.write(file)
+            for i in range(3):
+                for j in range(4):
+                    file.write_float(matrix[i][j])
 
 
 class AnimationSkin(RWObject):
@@ -799,33 +782,28 @@ class AnimationSkin(RWObject):
 
     class BonePose:
         def __init__(self):
-            self.abs_bind_pose = RWMatrix(3, 3)
-            self.inv_pose_translation = [0, 0, 0]
+            self.matrix = Matrix.Identity(3)
+            self.translation = Vector((0, 0, 0))
 
         def read(self, file):
             for i in range(3):
                 for j in range(3):
-                    self.abs_bind_pose[i][j] = file.read_float()
-
+                    self.matrix[i][j] = file.read_float()
                 file.read_int()  # 0
 
             for i in range(3):
-                self.inv_pose_translation[i] = file.read_float()
-
+                self.translation[i] = file.read_float()
             file.read_int()  # 0
-
-            self.matrix = self.abs_bind_pose
-            self.translation = self.inv_pose_translation
 
         def write(self, file):
             for i in range(3):
                 for j in range(3):
-                    file.write_float(self.abs_bind_pose[i][j])
+                    file.write_float(self.matrix[i][j])
 
                 file.write_int(0)
 
             for i in range(3):
-                file.write_float(self.inv_pose_translation[i])
+                file.write_float(self.translation[i])
 
             file.write_int(0)
 
@@ -987,9 +965,6 @@ class SkeletonBone:
         self.name = name
         self.flags = flags
         self.parent = parent
-        self.parent_index = -1
-        self.matrix = None
-        self.translation = None
 
 
 class Skeleton(RWObject):
@@ -1026,7 +1001,6 @@ class Skeleton(RWObject):
             index = file.read_int()
             if index != -1:
                 bone.parent = self.bones[index]
-                bone.parent_index = index
 
     def write(self, file: FileWriter):
         base_pos = file.tell()
@@ -1335,13 +1309,15 @@ class LocRotScaleKeyframe(Keyframe):
 
     def __init__(self):
         super().__init__()
-        self.loc = [0.0, 0.0, 0.0]
-        self.rot = [0.0, 0.0, 0.0, 1.0]
-        self.scale = [1.0, 1.0, 1.0]
+        self.loc = Vector((0.0, 0.0, 0.0))
+        self.rot = Quaternion()
+        self.scale = Vector((1.0, 1.0, 1.0))
 
     def read(self, file: FileReader):
-        for i in range(4):
-            self.rot[i] = file.read_float()
+        self.rot.x = file.read_float()
+        self.rot.y = file.read_float()
+        self.rot.z = file.read_float()
+        self.rot.w = file.read_float()
 
         for i in range(3):
             self.loc[i] = file.read_float()
@@ -1353,8 +1329,10 @@ class LocRotScaleKeyframe(Keyframe):
         self.time = file.read_float()
 
     def write(self, file: FileWriter):
-        for i in range(4):
-            file.write_float(self.rot[i])
+        file.write_float(self.rot.x)
+        file.write_float(self.rot.y)
+        file.write_float(self.rot.z)
+        file.write_float(self.rot.w)
 
         for i in range(3):
             file.write_float(self.loc[i])
@@ -1365,18 +1343,6 @@ class LocRotScaleKeyframe(Keyframe):
         file.write_int(0)
         file.write_float(self.time)
 
-    def set_scale(self, scale):
-        self.scale = scale
-
-    def set_rotation(self, quaternion):
-        self.rot[0] = quaternion.x
-        self.rot[1] = quaternion.y
-        self.rot[2] = quaternion.z
-        self.rot[3] = quaternion.w
-
-    def set_translation(self, offset):
-        self.loc = offset
-
 
 class LocRotKeyframe(Keyframe):
     components = 0x101
@@ -1384,12 +1350,14 @@ class LocRotKeyframe(Keyframe):
 
     def __init__(self):
         super().__init__()
-        self.loc = [0.0, 0.0, 0.0]
-        self.rot = [0.0, 0.0, 0.0, 1.0]
+        self.loc = Vector((0, 0, 0))
+        self.rot = Quaternion()
 
     def read(self, file: FileReader):
-        for i in range(4):
-            self.rot[i] = file.read_float()
+        self.rot.x = file.read_float()
+        self.rot.y = file.read_float()
+        self.rot.z = file.read_float()
+        self.rot.w = file.read_float()
 
         for i in range(3):
             self.loc[i] = file.read_float()
@@ -1397,8 +1365,10 @@ class LocRotKeyframe(Keyframe):
         self.time = file.read_float()
 
     def write(self, file: FileWriter):
-        for i in range(4):
-            file.write_float(self.rot[i])
+        file.write_float(self.rot.x)
+        file.write_float(self.rot.y)
+        file.write_float(self.rot.z)
+        file.write_float(self.rot.w)
 
         for i in range(3):
             file.write_float(self.loc[i])

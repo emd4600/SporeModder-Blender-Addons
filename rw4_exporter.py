@@ -76,17 +76,6 @@ def mesh_triangulate(me):
     bm.free()
 
 
-def create_skin_matrix_buffer():
-    matrix = rw4_base.RWMatrix(3, 4)
-
-    for i in range(3):
-        for j in range(4):
-            matrix[i][j] = 0.0
-        matrix[i][i] = 1.0
-
-    return matrix
-
-
 def calculate_tangents(vertices, faces):
     """
     Calculates the tangents of a processed mesh, storing them on `vertices['tangent']`
@@ -171,9 +160,10 @@ class RW4Exporter:
         self.b_armature_object = None
         self.b_mesh_objects = []
 
-        self.bone_bases = {}
-
+        self.bones_skin = {}  # Maps name to skin
         self.skin_matrix_buffer = None
+        self.animation_skin = None
+        self.skeleton = None
 
         self.render_ware.header.rw_type_code = rw4_enums.RW_MODEL
 
@@ -799,13 +789,36 @@ class RW4Exporter:
 
     def create_animation_skin(self, b_bone):
         pose = rw4_base.AnimationSkin.BonePose()
-        pose.abs_bind_pose = b_bone.matrix_local.to_3x3()
-        pose.inv_pose_translation = b_bone.matrix_local.inverted().to_translation()
+        pose.matrix = b_bone.matrix_local.to_3x3()
+        pose.translation = b_bone.matrix_local.inverted().to_translation()
 
-        base = RW4Exporter.BaseBone(pose.abs_bind_pose, pose.inv_pose_translation)
-        self.bone_bases[b_bone.name] = base
+        self.bones_skin[b_bone.name] = pose
 
         return pose
+
+    def process_bone(self, bbone, parent):
+        bone = rw4_base.SkeletonBone(file_io.get_hash(bbone.name), 0, parent)
+
+        if bbone.parent is None:
+            bone.flags = rw4_base.SkeletonBone.TYPE_ROOT
+        else:
+            # If it's a leaf (no children)
+            if not bbone.children:
+                # If it's not the only children
+                if len(bbone.parent.children) > 1:
+                    bone.flags = rw4_base.SkeletonBone.TYPE_BRANCH_LEAF
+                else:
+                    bone.flags = rw4_base.SkeletonBone.TYPE_LEAF
+            elif len(bbone.children) == 1:
+                bone.flags = rw4_base.SkeletonBone.TYPE_BRANCH
+
+        self.skin_matrix_buffer.data.append(Matrix.Identity(4))
+        self.animation_skin.data.append(self.create_animation_skin(bbone))
+
+        self.skeleton.bones.append(bone)
+
+        for child in bbone.children:
+            self.process_bone(child, bone)
 
     def export_armature_object(self, obj):
         if self.b_armature_object is not None:
@@ -823,58 +836,40 @@ class RW4Exporter:
             render_ware
         )
 
-        skeleton = rw4_base.Skeleton(
+        self.skeleton = rw4_base.Skeleton(
             render_ware,
             skeleton_id=file_io.get_hash(self.b_armature_object.name)
         )
 
-        animation_skin = rw4_base.AnimationSkin(
+        self.animation_skin = rw4_base.AnimationSkin(
             render_ware
         )
 
         skins_ink = rw4_base.SkinsInK(
             render_ware,
             skin_matrix_buffer=self.skin_matrix_buffer,
-            skeleton=skeleton,
-            animation_skin=animation_skin,
+            skeleton=self.skeleton,
+            animation_skin=self.animation_skin,
         )
 
-        # blender bone -> Spore bone
-        bbone_to_bone = {}
-
+        already_processed = False
         for bbone in b_armature.bones:
-            bone = rw4_base.SkeletonBone(0, 0, None)
-            bone.name = file_io.get_hash(bbone.name)
-
-            if bbone.parent is not None:
-                bone.parent = bbone_to_bone[bbone.parent]
-
-            # calculate flags
-            if bbone.parent is not None:
-                # if no children
-                if len(bbone.children) == 0:
-                    # if it's not the only children
-                    if len(bbone.parent.children) > 1:
-                        bone.flags = 3
-                    else:
-                        bone.flags = 1
-
-                elif len(bbone.children) == 1:
-                    bone.flags = 2
-
-            else:
-                bone.flags = 0
-
-            self.skin_matrix_buffer.data.append(create_skin_matrix_buffer())
-            animation_skin.data.append(self.create_animation_skin(bbone))
-
-            bbone_to_bone[bbone] = bone
-
-            skeleton.bones.append(bone)
+            if bbone.parent is None:
+                if not already_processed:
+                    self.process_bone(bbone, None)
+                    already_processed = True
+                    if bbone.head != Vector((0.0, 0.0, 0.0)):
+                        error = rw4_validation.error_root_bone_not_origin()
+                        if error not in self.warnings:
+                            self.warnings.add(error)
+                else:
+                    error = rw4_validation.error_root_bone_limit()
+                    if error not in self.warnings:
+                        self.warnings.add(error)
 
         render_ware.add_object(self.skin_matrix_buffer)
-        render_ware.add_object(skeleton)
-        render_ware.add_object(animation_skin)
+        render_ware.add_object(self.skeleton)
+        render_ware.add_object(self.animation_skin)
         render_ware.add_object(skins_ink)
 
         render_ware.add_sub_reference(self.skin_matrix_buffer, 16)
@@ -889,16 +884,16 @@ class RW4Exporter:
         # before: using matrix_basis
         # that didn't translate child bones when moving a root in a chain, however
         #         if pose_bone.parent is None:
-        #             return pose_bone.matrix_basis.to_translation() - self.bone_bases[pose_bone.name].inv_pose_translation
+        #             return pose_bone.matrix_basis.to_translation() - self.bones_skin[pose_bone.name].inv_pose_translation
         #         else:
-        #             return pose_bone.matrix_basis.to_translation() - (self.bone_bases[pose_bone.name].inv_pose_translation + self.get_total_translation(pose_bone.parent))
+        #             return pose_bone.matrix_basis.to_translation() - (self.bones_skin[pose_bone.name].inv_pose_translation + self.get_total_translation(pose_bone.parent))
         #         if pose_bone.parent is None:
-        #             return pose_bone.matrix_basis.to_translation() - self.bone_bases[pose_bone.name].inv_pose_translation
+        #             return pose_bone.matrix_basis.to_translation() - self.bones_skin[pose_bone.name].inv_pose_translation
         #         else:
-        #             return -(self.bone_bases[pose_bone.name].inv_pose_translation + self.get_total_translation(pose_bone.parent)) - pose_bone.matrix_channel.to_translation()
+        #             return -(self.bones_skin[pose_bone.name].inv_pose_translation + self.get_total_translation(pose_bone.parent)) - pose_bone.matrix_channel.to_translation()
 
         if pose_bone.parent is None:
-            return pose_bone.matrix_basis.to_translation() - self.bone_bases[pose_bone.name].inv_pose_translation
+            return pose_bone.matrix_basis.to_translation() - self.bones_skin[pose_bone.name].translation
         else:
             return pose_bone.parent.matrix.inverted() @ pose_bone.matrix.to_translation()
 
@@ -913,8 +908,8 @@ class RW4Exporter:
         if pose_bone.parent is None:
             return pose_bone.matrix.to_quaternion()
         else:
-            # rotation = pose_bone.rotation_quaternion * self.bone_bases[pose_bone.parent.name].abs_bind_pose.to_quaternion().inverted()
-            # rotation = pose_bone.matrix.to_quaternion() * self.bone_bases[pose_bone.parent.name].abs_bind_pose.to_quaternion().inverted() * pose_bone.parent.rotation_quaternion
+            # rotation = pose_bone.rotation_quaternion * self.bones_skin[pose_bone.parent.name].abs_bind_pose.to_quaternion().inverted()
+            # rotation = pose_bone.matrix.to_quaternion() * self.bones_skin[pose_bone.parent.name].abs_bind_pose.to_quaternion().inverted() * pose_bone.parent.rotation_quaternion
             return self.get_total_rotation(pose_bone.parent).inverted() @ pose_bone.matrix.to_quaternion()
 
     def process_blend_shape_action(self, action, keyframe_anim):
@@ -982,8 +977,6 @@ class RW4Exporter:
                                  "Animation Error")
                 return
 
-            base_bone = self.bone_bases[group.name]
-
             channel = rw4_base.AnimationChannel(rw4_base.LocRotScaleKeyframe)  # TODO
             channel.channel_id = file_io.get_hash(group.name)
             keyframe_anim.channels.append(channel)
@@ -1009,14 +1002,14 @@ class RW4Exporter:
                 #                     if pose_bone.parent is None:
                 #                         rotation = pose_bone.matrix.to_quaternion()
                 #                     else:
-                #                         # rotation = pose_bone.rotation_quaternion * self.bone_bases[pose_bone.parent.name].abs_bind_pose.to_quaternion().inverted()
-                #                         rotation = pose_bone.matrix.to_quaternion() * self.bone_bases[pose_bone.parent.name].abs_bind_pose.to_quaternion().inverted() * pose_bone.parent.rotation_quaternion
+                #                         # rotation = pose_bone.rotation_quaternion * self.bones_skin[pose_bone.parent.name].abs_bind_pose.to_quaternion().inverted()
+                #                         rotation = pose_bone.matrix.to_quaternion() * self.bones_skin[pose_bone.parent.name].abs_bind_pose.to_quaternion().inverted() * pose_bone.parent.rotation_quaternion
 
-                keyframe.set_translation(translation)
-                keyframe.set_scale(scale)
+                keyframe.loc = translation
+                keyframe.scale = scale
 
                 # keyframe.setRotation(baseBone.abs_bind_pose.to_quaternion().inverted() * pose_bone.matrix.to_quaternion())
-                keyframe.set_rotation(rotation)
+                keyframe.rot = rotation
 
     def export_actions(self):
 

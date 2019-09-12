@@ -30,17 +30,25 @@ class MineralPaintPart(RWMaterial):
 
     paint_region: IntProperty(
         name="Paint Region",
+        description="When painting, all materials with the same paint region value will use the same paint.",
         default=1
     )
 
-    use_paint_texture: BoolProperty(
-        name="Use Paint Texture",
-        description="Uncheck if this material doesn't use textures (everything will be painted with a matte color).",
-        default=True
+    paint_mode: EnumProperty(
+        name="Paint Mode",
+        items=(
+            ('PAINT', "Paint (Texture)", ""),
+            ('PAINT_COLOR', "Paint (only Color)", "This mesh will be paintable, but it won't use the paint texture, "
+                                                  "only the color.'"),
+            ('TEXTURE', "Model Texture", "Use the texture exported with the model. This mesh won't be paintable.'"),
+        ),
+        default='PAINT'
     )
 
     uv_projection: EnumProperty(
         name="UV Projection",
+        description="The projection decides how the paint texture is applied to the model. You should choose the "
+                    "option more appropiate for the geometry of the model.",
         items=(
             ('0', "Project XY", ""),  # 0
             ('1', "Project XZ", ""),  # 1
@@ -81,11 +89,15 @@ class MineralPaintPart(RWMaterial):
 
         data = rw4_material.material_data_MineralPaintPart
 
-        layout.prop(data, 'diffuse_texture')
-        layout.prop(data, 'paint_region')
-        layout.prop(data, 'use_paint_texture')
+        layout.prop(data, 'paint_mode')
+        layout.separator()
 
-        if data.use_paint_texture:
+        if data.paint_mode == 'TEXTURE':
+            layout.prop(data, 'diffuse_texture')
+        else:
+            layout.prop(data, 'paint_region')
+
+        if data.paint_mode == 'PAINT':
             layout.prop(data, 'uv_projection')
 
             layout.prop(data, 'uv_scale')
@@ -109,9 +121,16 @@ class MineralPaintPart(RWMaterial):
 
         # -- SHADER CONSTANTS -- #
 
-        material.add_shader_data(SHADER_DATA['region'], struct.pack('<ii', material_data.paint_region, 0x00C7E300))
+        region = 50 if material_data.paint_mode == 'TEXTURE' else material_data.paint_region
+        diffuse_texture = ""
 
-        if material_data.use_paint_texture:
+        material.add_shader_data(SHADER_DATA['region'], struct.pack('<ii', region, 0x00C7E300))
+
+        if material_data.paint_mode == 'TEXTURE':
+            diffuse_texture = material_data.diffuse_texture
+            material.add_shader_data(0x217, struct.pack('<i', 0))
+
+        elif material_data.paint_mode == 'PAINT':
             material.add_shader_data(SHADER_DATA['uvTweak'], struct.pack(
                 '<iffff',
                 int(material_data.uv_projection),
@@ -120,6 +139,7 @@ class MineralPaintPart(RWMaterial):
                 material_data.uv_offset[0],
                 material_data.uv_offset[1],
             ))
+
         else:
             material.add_shader_data(0x244, struct.pack('<i', 0))
 
@@ -144,7 +164,7 @@ class MineralPaintPart(RWMaterial):
 
         # -- TEXTURE SLOTS -- #
 
-        material.texture_slots.append(RWTextureSlot(0, exporter.add_texture(material_data.diffuse_texture)))
+        material.texture_slots.append(RWTextureSlot(0, exporter.add_texture(diffuse_texture)))
         material.texture_slots.append(RWTextureSlot(1, None))
 
         return material
@@ -155,7 +175,7 @@ class MineralPaintPart(RWMaterial):
         if material.shader_id != 0x80000004 and material.shader_id != 0x80000005:
             return False
 
-        sh_data = material.get_shader_data(0x20F)
+        sh_data = material.get_shader_data(SHADER_DATA['region'])
         if sh_data is None or sh_data.data is None or len(sh_data.data) != 8:
             return False
 
@@ -165,7 +185,7 @@ class MineralPaintPart(RWMaterial):
 
         RWMaterial.parse_material_builder(material, rw4_material)
 
-        sh_data = material.get_shader_data(0x211)
+        sh_data = material.get_shader_data(SHADER_DATA['uvTweak'])
         if sh_data is not None and len(sh_data.data) == struct.calcsize('<iffff'):
             material_data.use_paint_texture = True
 
@@ -175,7 +195,12 @@ class MineralPaintPart(RWMaterial):
             material_data.uv_scale[1] = values[2]
             material_data.uv_offset[0] = values[3]
             material_data.uv_offset[1] = values[4]
+
         else:
-            material_data.use_paint_texture = False
+            sh_data = material.get_shader_data(0x244)
+            if sh_data is not None and len(sh_data.data) == 4:
+                material_data.paint_mode = 'PAINT_COLOR'
+            else:
+                material_data.paint_mode = 'TEXTURE'
 
         return True
