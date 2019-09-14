@@ -144,12 +144,14 @@ def convert_vertices(vertices, vertex_elements):
     return [vertex_class(**dict(zip(vertices, v))) for v in zip(*vertices.values())]
 
 
-class RW4Exporter:
-    class BaseBone:
-        def __init__(self, absBindPose, invPoseTranslation):
-            self.abs_bind_pose = absBindPose
-            self.inv_pose_translation = invPoseTranslation
+class ExporterBone:
+    def __init__(self, matrix, translation, parent=None):
+        self.matrix = matrix
+        self.translation = translation
+        self.parent = parent
 
+
+class RW4Exporter:
     def __init__(self):
         self.render_ware = rw4_base.RenderWare4()
 
@@ -164,6 +166,7 @@ class RW4Exporter:
         self.skin_matrix_buffer = None
         self.animation_skin = None
         self.skeleton = None
+        self.bone_parent_indices = []
 
         self.render_ware.header.rw_type_code = rw4_enums.RW_MODEL
 
@@ -672,6 +675,12 @@ class RW4Exporter:
         use_texcoord = blender_mesh.uv_layers.active is not None
         use_bones = self.b_armature_object is not None
 
+        if not use_texcoord:
+            #TODO depending on the material? where did the "No material" go?
+            error = rw4_validation.error_no_texcoord(obj)
+            if error not in self.warnings:
+                self.warnings.add(error)
+
         # For each object, create a vertex and index buffer
 
         # When there is BlendShape, Spore does not add the bone indices to the vertex format, I don't know why
@@ -966,6 +975,9 @@ class RW4Exporter:
             channel.new_keyframe(keyframe_anim.length).factor = 0.0
 
     def process_skeleton_action(self, action, keyframe_anim):
+        # First we need the final model space transformations used by the shader
+        # That's matrix @ matrix_local.inverted()
+
         for group in action.groups:
             pose_bone = None
             for b in self.b_armature_object.pose.bones:
@@ -976,6 +988,22 @@ class RW4Exporter:
                 show_message_box(f"Animation '{action.name}' has keyframes for unknown bone '{group.name}'",
                                  "Animation Error")
                 return
+
+            bpy.context.scene.frame_set(0)
+
+            for kf in group.channels[0].keyframe_points:
+                bpy.context.scene.frame_set(int(kf.co[0]))
+
+                world_r = pose_bone.matrix.to_3x3() @ pose_bone.bone.matrix_local.to_3x3().inverted()
+                world_t = pose_bone.matrix.to_translation() - pose_bone.bone.head_local
+                dst_r = world_r
+                dst_t = world_t
+
+                for i in range(3):
+                    print(f"skin_bones_data += struct.pack('ffff', {dst_r[i][0]}, {dst_r[i][1]}, {dst_r[i][2]}, {dst_t[i]})")
+
+                print()
+                print()
 
             channel = rw4_base.AnimationChannel(rw4_base.LocRotScaleKeyframe)  # TODO
             channel.channel_id = file_io.get_hash(group.name)

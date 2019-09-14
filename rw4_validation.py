@@ -18,6 +18,10 @@ def error_vertices_limit(obj):
     return f"Mesh {obj.name} has too many vertices. Reduce the complexity or split into multiple objects."
 
 
+def error_no_texcoord(obj):
+    return f"Mesh {obj.name} does not have a UV map."
+
+
 def error_root_bone_limit():
     return "The armature has more than one root bone."
 

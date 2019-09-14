@@ -350,15 +350,9 @@ class RW4Importer:
         for skin in self.skin_data:
             m = skin.matrix
             t = skin.translation
-            inv_bind_pose = m.inverted().to_4x4()
-            inv_bind_pose[0][3] = t[0]
-            inv_bind_pose[1][3] = t[1]
-            inv_bind_pose[2][3] = t[2]
 
-            abs_bind_pose = inv_bind_pose.inverted()
-            head = abs_bind_pose.to_translation()
-
-            axis, roll = mat3_to_vec_roll(inv_bind_pose.to_3x3())
+            # When inverting a matrix, the translation becomes -inv(M) * t
+            head = m @ -t
 
             # We might not need to use rotations at all, so this is better
             axis = Vector((0, 1, 0))
@@ -458,6 +452,7 @@ class RW4Importer:
                 t = previous_rot.transposed() @ pose_bone.t + previous_loc
 
                 if not skip_bone:
+                    # Same as m.transposed() @ skin.matrix.inverted()
                     dst_r = (skin.matrix @ m).transposed()
                     dst_t = t + (m.transposed() @ skin.translation)
 
