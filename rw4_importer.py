@@ -446,15 +446,14 @@ class RW4Importer:
                 scale_matrix = Matrix.Diagonal(pose_bone.s)
                 parent_inv_scale = \
                     Matrix.Diagonal((1.0 / previous_scale.x, 1.0 / previous_scale.y, 1.0 / previous_scale.z))
-                m = (scale_matrix @ pose_bone.r.to_matrix().transposed()) @ parent_inv_scale
-                m = m @ previous_rot
+                m = parent_inv_scale @ (pose_bone.r.to_matrix() @ scale_matrix)
+                m = previous_rot @ m
 
-                t = previous_rot.transposed() @ pose_bone.t + previous_loc
+                t = previous_rot @ pose_bone.t + previous_loc
 
                 if not skip_bone:
-                    # Same as m.transposed() @ skin.matrix.inverted()
-                    dst_r = (skin.matrix @ m).transposed()
-                    dst_t = t + (m.transposed() @ skin.translation)
+                    dst_r = m @ skin.matrix.inverted()
+                    dst_t = t + (m @ skin.translation)
 
                     #for i in range(3):
                     #    print(f"skin_bones_data += struct.pack('ffff', {dst_r[i][0]}, {dst_r[i][1]}, {dst_r[i][2]}, {dst_t[i]})")
