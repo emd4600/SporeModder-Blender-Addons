@@ -255,6 +255,7 @@ SPORE_NAMES = {
     0x267AFA7C: 'DeformThickness',  #TODO
     0x837EB7F4: 'DeformAxleLength',  #TODO
     0xF320BA37: 'BoneLength',  #TODO
+    0x503283AA: 'Nudge',  #TODO
     0xD0BE09E0: 'joint1',
     0xD0BE09E2: 'joint3',
     0xD0BE09E3: 'joint2',

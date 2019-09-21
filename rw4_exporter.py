@@ -882,44 +882,6 @@ class RW4Exporter:
 
         render_ware.add_sub_reference(self.skin_matrix_buffer, 16)
 
-    def get_total_translation(self, pose_bone):
-        if pose_bone.parent is None:
-            return self.get_bone_translation(pose_bone)
-        else:
-            return self.get_bone_translation(pose_bone) + self.get_total_translation(pose_bone.parent)
-
-    def get_bone_translation(self, pose_bone):
-        # before: using matrix_basis
-        # that didn't translate child bones when moving a root in a chain, however
-        #         if pose_bone.parent is None:
-        #             return pose_bone.matrix_basis.to_translation() - self.bones_skin[pose_bone.name].inv_pose_translation
-        #         else:
-        #             return pose_bone.matrix_basis.to_translation() - (self.bones_skin[pose_bone.name].inv_pose_translation + self.get_total_translation(pose_bone.parent))
-        #         if pose_bone.parent is None:
-        #             return pose_bone.matrix_basis.to_translation() - self.bones_skin[pose_bone.name].inv_pose_translation
-        #         else:
-        #             return -(self.bones_skin[pose_bone.name].inv_pose_translation + self.get_total_translation(pose_bone.parent)) - pose_bone.matrix_channel.to_translation()
-
-        if pose_bone.parent is None:
-            return pose_bone.matrix_basis.to_translation() - self.bones_skin[pose_bone.name].translation
-        else:
-            return pose_bone.parent.matrix.inverted() @ pose_bone.matrix.to_translation()
-
-    def get_total_rotation(self, pose_bone):
-        if pose_bone.parent is None:
-            return self.get_bone_rotation(pose_bone)
-        else:
-            # return self.get_bone_rotation(pose_bone) * self.get_total_rotation(pose_bone.parent)
-            return self.get_total_rotation(pose_bone.parent) @ self.get_bone_rotation(pose_bone)
-
-    def get_bone_rotation(self, pose_bone):
-        if pose_bone.parent is None:
-            return pose_bone.matrix.to_quaternion()
-        else:
-            # rotation = pose_bone.rotation_quaternion * self.bones_skin[pose_bone.parent.name].abs_bind_pose.to_quaternion().inverted()
-            # rotation = pose_bone.matrix.to_quaternion() * self.bones_skin[pose_bone.parent.name].abs_bind_pose.to_quaternion().inverted() * pose_bone.parent.rotation_quaternion
-            return self.get_total_rotation(pose_bone.parent).inverted() @ pose_bone.matrix.to_quaternion()
-
     def process_blend_shape_action(self, action, keyframe_anim):
         """
         Processes a shape key action to fill the data of the KeyframeAnim.
@@ -939,7 +901,7 @@ class RW4Exporter:
             channel.keyframe_class = rw4_base.BlendFactorKeyframe
             keyframe_anim.channels.append(channel)
 
-            match = re.search(r'\["([a-zA-Z_\-\s1-9.]+)"\]', fcurve.data_path)
+            match = re.search(r'\["([a-zA-Z_\-\s0-9.]+)"\]', fcurve.data_path)
             channel.channel_id = file_io.get_hash(match.group(1))
 
             shape_ids.remove(channel.channel_id)
