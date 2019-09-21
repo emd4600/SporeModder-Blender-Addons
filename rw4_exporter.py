@@ -166,7 +166,6 @@ class RW4Exporter:
         self.skin_matrix_buffer = None
         self.animation_skin = None
         self.skeleton = None
-        self.bone_parent_indices = []
 
         self.render_ware.header.rw_type_code = rw4_enums.RW_MODEL
 
@@ -975,73 +974,103 @@ class RW4Exporter:
             channel.new_keyframe(keyframe_anim.length).factor = 0.0
 
     def process_skeleton_action(self, action, keyframe_anim):
-        # First we need the final model space transformations used by the shader
-        # That's matrix @ matrix_local.inverted()
-
+        # 1. Get all possible keyframe times
+        keyframe_times = {0}  # Ensure frame 0 is always there
         for group in action.groups:
-            pose_bone = None
-            for b in self.b_armature_object.pose.bones:
-                if b.name == group.name:
-                    pose_bone = b
+            for channel in group.channels:
+                for kf in channel.keyframe_points:
+                    keyframe_times.add(int(kf.co[0]))
 
-            if pose_bone is None:
-                show_message_box(f"Animation '{action.name}' has keyframes for unknown bone '{group.name}'",
-                                 "Animation Error")
-                return
+        keyframe_times = sorted(keyframe_times)
 
-            bpy.context.scene.frame_set(0)
+        # 2. We need the final model space transformations used by the shader
+        # We will keep the 'm' used in the importer
+        keyframe_poses = {}
+        for time in keyframe_times:
+            bpy.context.scene.frame_set(time)
 
-            for kf in group.channels[0].keyframe_points:
-                bpy.context.scene.frame_set(int(kf.co[0]))
+            poses = {}
+            for name, skin in self.bones_skin.items():
+                pose_bone = self.b_armature_object.pose.bones[name]
 
+                # In importer:  world_r = m @ skin.matrix.inverted()
+                # In importer:  world_t = t + (m @ skin.translation)
                 world_r = pose_bone.matrix.to_3x3() @ pose_bone.bone.matrix_local.to_3x3().inverted()
-                world_t = pose_bone.matrix.to_translation() - pose_bone.bone.head_local
-                dst_r = world_r
-                dst_t = world_t
 
-                for i in range(3):
-                    print(f"skin_bones_data += struct.pack('ffff', {dst_r[i][0]}, {dst_r[i][1]}, {dst_r[i][2]}, {dst_t[i]})")
+                # in vertex shader, final pos would be world_r @ pos
+                # we need to move it to pose_bone.matrix.to_translation()
+                final_pos = world_r @ pose_bone.bone.head_local
+                world_t = pose_bone.matrix.to_translation() - final_pos
 
-                print()
-                print()
+                m = world_r @ skin.matrix
+                t = world_t - (m @ skin.translation)
 
-            channel = rw4_base.AnimationChannel(rw4_base.LocRotScaleKeyframe)  # TODO
-            channel.channel_id = file_io.get_hash(group.name)
+                poses[name] = rw4_base.AnimationSkin.BonePose(matrix=m, translation=t)
+
+            keyframe_poses[time] = poses
+
+        # 3. Create the channels
+        channels = {}
+        for name in self.bones_skin:
+            channel = rw4_base.AnimationChannel(rw4_base.LocRotScaleKeyframe)
+            channel.channel_id = file_io.get_hash(name)
             keyframe_anim.channels.append(channel)
+            channels[name] = channel
 
-            bpy.context.scene.frame_set(0)
+        # 4. Add all the keyframes:
+        for time, poses in keyframe_poses.items():
+            scales = {}
+            print(poses)
+            for name, pose in poses.items():
+                keyframe = channels[name].new_keyframe(time / rw4_base.KeyframeAnim.FPS)
 
-            for kf in group.channels[0].keyframe_points:
-                bpy.context.scene.frame_set(int(kf.co[0]))
+                parent_bone = self.b_armature_object.pose.bones[name].parent
+                if parent_bone is None:
+                    parent_pose = rw4_base.AnimationSkin.BonePose()
+                    parent_inv_scale = Vector((1, 1, 1))
+                else:
+                    parent_pose = poses[parent_bone.name]
+                    s = scales[parent_bone.name]
+                    parent_inv_scale = Vector((1.0 / s[0], 1.0 / s[1], 1.0 / s[2]))
 
-                keyframe = channel.new_keyframe(kf.co[0] / rw4_base.KeyframeAnim.FPS)
+                m = pose.matrix
+                t = pose.translation
 
-                # baseTransform * keyframeTransform = finalTransform
-                # blenderKeyframe = finalTranform ?
+                # In importer:  m = parent_rot @ scaled_m
+                scaled_m = parent_pose.matrix.inverted() @ m
 
-                # translation = pose_bone.matrix.to_translation()
+                # In importer:  scaled_m = parent_inv_scale @ (pose_bone.r.to_matrix() @ scale_matrix)
+                scaled_m = Matrix.Diagonal(parent_inv_scale).inverted() @ scaled_m
+                keyframe.rot = scaled_m.to_quaternion()
+                keyframe.scale = scaled_m.to_scale()
+                scales[name] = keyframe.scale
 
-                translation = self.get_bone_translation(pose_bone)
+                # In importer:  t = parent_rot @ pose_bone.t + parent_loc
+                keyframe.loc = parent_pose.matrix.inverted() @ (t - parent_pose.translation)
 
-                scale = pose_bone.matrix.to_scale()
+        print()
+        # for name, pose in keyframe_poses[15].items():
+        #     m = pose.matrix
+        #     t = pose.translation
+        #     skin = self.bones_skin[name]
+        #
+        #     dst_r = m @ skin.matrix.inverted()
+        #     dst_t = t + (m @ skin.translation)
+        #
+        #     for i in range(3):
+        #         print(f"skin_bones_data += struct.pack('ffff', {dst_r[i][0]}, {dst_r[i][1]}, {dst_r[i][2]}, {dst_t[i]})")
 
-                rotation = self.get_bone_rotation(pose_bone)
-
-                #                     if pose_bone.parent is None:
-                #                         rotation = pose_bone.matrix.to_quaternion()
-                #                     else:
-                #                         # rotation = pose_bone.rotation_quaternion * self.bones_skin[pose_bone.parent.name].abs_bind_pose.to_quaternion().inverted()
-                #                         rotation = pose_bone.matrix.to_quaternion() * self.bones_skin[pose_bone.parent.name].abs_bind_pose.to_quaternion().inverted() * pose_bone.parent.rotation_quaternion
-
-                keyframe.loc = translation
-                keyframe.scale = scale
-
-                # keyframe.setRotation(baseBone.abs_bind_pose.to_quaternion().inverted() * pose_bone.matrix.to_quaternion())
-                keyframe.rot = rotation
+        print()
+        for name, bone in zip(self.bones_skin, self.skeleton.bones):
+            print(f"{name}\t{bone.flags}")
 
     def export_actions(self):
 
         animations_list = rw4_base.Animations(self.render_ware)
+
+        original_skeleton_action = None
+        if self.b_armature_object is not None and self.b_armature_object.animation_data is not None:
+            original_skeleton_action = self.b_armature_object.animation_data.action
 
         for action in bpy.data.actions:
             if not action.fcurves:
@@ -1059,8 +1088,6 @@ class RW4Exporter:
 
             is_shape_key = action.id_root == 'KEY'
 
-            # self.b_armature_object.animation_data.action = action
-
             skeleton_id = self.blend_shape.id if is_shape_key else file_io.get_hash(self.b_armature_object.name)
 
             keyframe_anim = rw4_base.KeyframeAnim(self.render_ware)
@@ -1071,6 +1098,7 @@ class RW4Exporter:
             if is_shape_key:
                 self.process_blend_shape_action(action, keyframe_anim)
             else:
+                self.b_armature_object.animation_data.action = action
                 self.process_skeleton_action(action, keyframe_anim)
 
             # Now, either add to animations list or to handles
@@ -1079,7 +1107,7 @@ class RW4Exporter:
                 handle.handle_id = file_io.get_hash(action.name)
                 handle.start_pos = action.rw4.initial_pos
                 handle.end_pos = action.rw4.final_pos
-                handle.default_progress = action.rw4.default_frame / action.frame_range[1]
+                handle.default_progress = action.rw4.default_progress / 100.0
                 handle.animation = keyframe_anim
 
                 self.render_ware.add_object(handle)
@@ -1092,6 +1120,9 @@ class RW4Exporter:
             if animations_list.animations:
                 self.render_ware.add_object(animations_list)
                 self.render_ware.add_sub_reference(animations_list, 8)
+
+        if original_skeleton_action is not None:
+            self.b_armature_object.animation_data.action = original_skeleton_action
 
     def calc_global_bbox(self):
         """

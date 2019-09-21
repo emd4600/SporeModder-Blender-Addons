@@ -137,6 +137,7 @@ class RWMaterialBuilder:
     FLAG_USE_BOOLEANS = 0x8000
 
     FLAG3_RENDER_STATES = 0x20000
+    FLAG3_TEXTURE_SLOTS = 0x1FFFF
 
     def __init__(self):
         self.material_color = None
@@ -294,7 +295,7 @@ class RWMaterialBuilder:
 
             stream.extend(struct.pack('<i', -1))
 
-    def from_compiled_state(self, data_reader: FileReader):
+    def from_compiled_state(self, data_reader: FileReader, render_ware):
         """Reads the compiled state stream."""
 
         data_reader.skip_bytes(4)  # primitiveType
@@ -382,6 +383,31 @@ class RWMaterialBuilder:
                     break
 
                 self.render_states[state] = value
+
+        data_reader.read_int()  # paletteEntriesIndex
+
+        if (flags3 & RWMaterialBuilder.FLAG3_TEXTURE_SLOTS) != 0:
+            sampler_index = data_reader.read_int()
+            while sampler_index != -1:
+                texture_slot = RWTextureSlot(sampler_index)
+                self.texture_slots.append(texture_slot)
+                index = data_reader.read_int()
+                if index != -1:
+                    texture_slot.texture_raster = render_ware.get_object(index)
+
+                if data_reader.read_int() != 0:  # stage state mask
+                    state = data_reader.read_int()
+                    while state != -1:
+                        texture_slot.texture_stage_states[state] = data_reader.read_int()
+                        state = data_reader.read_int()
+
+                if data_reader.read_int() != 0:  # sampler state mask
+                    state = data_reader.read_int()
+                    while state != -1:
+                        texture_slot.sampler_states[state] = data_reader.read_int()
+                        state = data_reader.read_int()
+
+                sampler_index = data_reader.read_int()
 
     def set_render_states(self, alpha_mode='NO_ALPHA'):
         """

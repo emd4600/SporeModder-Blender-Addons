@@ -54,3 +54,7 @@ class RWMaterial(bpy.types.PropertyGroup):
             
         if material_data.material_use_alpha:
             material_builder.set_render_states(rw4_material.alpha_type)
+
+    @staticmethod
+    def set_texture(obj, material, slot_index, path):
+        pass

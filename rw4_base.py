@@ -577,6 +577,16 @@ class Raster(RWObject):
         self.mipmap_levels = dds_texture.dwMipMapCount
         self.texture_format = dds_texture.ddsPixelFormat.dwFourCC
 
+    def to_dds(self):
+        dds_texture = DDSTexture()
+        dds_texture.dwWidth = self.width
+        dds_texture.dwHeight = self.height
+        dds_texture.dwDepth = self.volume_depth
+        dds_texture.dwMipMapCount = self.mipmap_levels
+        dds_texture.ddsPixelFormat.dwFourCC = self.texture_format
+        dds_texture.data = self.texture_data.data
+        return dds_texture
+
 
 class VertexDescription(RWObject):
     type_code = 0x20004
@@ -781,9 +791,9 @@ class AnimationSkin(RWObject):
     alignment = 16
 
     class BonePose:
-        def __init__(self):
-            self.matrix = Matrix.Identity(3)
-            self.translation = Vector((0, 0, 0))
+        def __init__(self, matrix=None, translation=None):
+            self.matrix = matrix if matrix is not None else Matrix.Identity(3)
+            self.translation = translation if translation is not None else Vector((0, 0, 0))
 
         def read(self, file):
             for i in range(3):
@@ -1710,7 +1720,7 @@ class DDSTexture:
 
         def __init__(self):
             self.dwSize = 32
-            self.dwFlags = 0
+            self.dwFlags = DDSTexture.DDSPixelFormat.DDPF_FOURCC
             self.dwFourCC = 0
             self.dwRGBBitCount = 32
             self.dwRBitMask = 0x00ff0000
@@ -1718,15 +1728,27 @@ class DDSTexture:
             self.dwBBitMask = 0x000000ff
             self.dwABitMask = 0xff000000
 
-        def read(self, file):
-            self.dwSize = file.read_int()
-            self.dwFlags = file.read_int()
+        def read(self, file: FileReader):
+            self.dwSize = file.read_uint()
+            self.dwFlags = file.read_uint()
             self.dwFourCC = file.read_int(endian='>')
-            self.dwRGBBitCount = file.read_int()
-            self.dwRBitMask = file.read_int()
-            self.dwGBitMask = file.read_int()
-            self.dwBBitMask = file.read_int()
-            self.dwABitMask = file.read_int()
+            self.dwRGBBitCount = file.read_uint()
+            self.dwRBitMask = file.read_uint()
+            self.dwGBitMask = file.read_uint()
+            self.dwBBitMask = file.read_uint()
+            self.dwABitMask = file.read_uint()
+
+        def write(self, file: FileWriter):
+            file.write_uint(self.dwSize)
+            file.write_uint(self.dwFlags)
+            # In Spore, 0x15 is uncompressed
+            typecode = 0 if self.dwFourCC == rw4_enums.D3DFMT_SPORE_UNCOMPRESSED else self.dwFourCC
+            file.write_int(typecode, endian='>')
+            file.write_uint(self.dwRGBBitCount)
+            file.write_uint(self.dwRBitMask)
+            file.write_uint(self.dwGBitMask)
+            file.write_uint(self.dwBBitMask)
+            file.write_uint(self.dwABitMask)
 
     def __init__(self):
         self.dwSize = 124
@@ -1749,6 +1771,9 @@ class DDSTexture:
         self.dwFlags |= DDSTexture.DDSD_HEIGHT
         self.dwFlags |= DDSTexture.DDSD_WIDTH
         self.dwFlags |= DDSTexture.DDSD_PIXELFORMAT
+
+        self.dwFlags |= DDSTexture.DDSD_LINEARSIZE
+        self.dwFlags |= DDSTexture.DDSD_MIPMAPCOUNT
 
         self.dwCaps |= DDSTexture.DDSCAPS_TEXTURE
 
@@ -1790,3 +1815,23 @@ class DDSTexture:
             file.seek(128)
 
             self.data = file.read(buffer_size)
+
+    def write(self, file: FileWriter):
+        file.write_int(0x44445320, endian='>')
+
+        # Only uncompressed or DXT5 supported
+        if self.ddsPixelFormat.dwFourCC == rw4_enums.D3DFMT_SPORE_UNCOMPRESSED:
+            self.dwPitchOrLinearSize = self.dwWidth * self.dwHeight * 4
+        else:
+            self.dwPitchOrLinearSize = self.dwWidth * self.dwHeight
+
+        file.pack('<7I', self.dwSize, self.dwFlags, self.dwHeight, self.dwWidth, self.dwPitchOrLinearSize,
+                  self.dwDepth, self.dwMipMapCount)
+
+        file.write(bytearray(11*4))
+
+        self.ddsPixelFormat.write(file)
+
+        file.pack('<5I', self.dwCaps, self.dwCaps2, self.dwCaps3, self.dwCaps4, 0)
+
+        file.write(self.data)

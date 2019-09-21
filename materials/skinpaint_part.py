@@ -5,6 +5,7 @@ from .rw_material_builder import RWMaterialBuilder, SHADER_DATA, RWTextureSlot
 from .. import rw4_base
 import struct
 
+import bpy
 from bpy.props import (StringProperty,
                        BoolProperty,
                        PointerProperty,
@@ -101,3 +102,17 @@ class SkinPaintPart(RWMaterial):
         RWMaterial.parse_material_builder(material, rw4_material)
 
         return True
+
+    @staticmethod
+    def set_texture(obj, material, slot_index, path):
+        material.rw4.material_data_SkinPaintPart.diffuse_texture = path
+
+        image = bpy.data.images.load(path)
+
+        texture_node = material.node_tree.nodes.new("ShaderNodeTexImage")
+        texture_node.image = image
+        texture_node.location = (-524, 256)
+
+        material.node_tree.links.new(material.node_tree.nodes["Principled BSDF"].inputs["Base Color"],
+                                     texture_node.outputs["Color"])
+

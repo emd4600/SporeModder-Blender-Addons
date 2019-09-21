@@ -3,6 +3,7 @@ __author__ = 'Eric'
 from .rw_material import RWMaterial
 from .rw_material_builder import RWMaterialBuilder, SHADER_DATA, RWTextureSlot
 import struct
+import bpy
 from bpy.props import (StringProperty,
                        BoolProperty,
                        FloatProperty,
@@ -26,7 +27,8 @@ class StaticModel(RWMaterial):
 
     normal_texture: StringProperty(
         name="Normal Texture",
-        description="The normal texture of this material (leave empty if no texture desired)",
+        description="The normal texture of this material, alpha channel is used as specular map"
+                    " (leave empty if no texture desired)",
         default="",
         subtype='FILE_PATH'
     )
@@ -139,3 +141,39 @@ class StaticModel(RWMaterial):
             material_data.material_params_4 = values[4]
 
         return True
+
+    @staticmethod
+    def set_texture(obj, material, slot_index, path):
+        if slot_index == 0:
+            material.rw4.material_data_StaticModel.diffuse_texture = path
+
+            image = bpy.data.images.load(path)
+
+            texture_node = material.node_tree.nodes.new("ShaderNodeTexImage")
+            texture_node.image = image
+            texture_node.location = (-524, 256)
+
+            material.node_tree.links.new(material.node_tree.nodes["Principled BSDF"].inputs["Base Color"],
+                                         texture_node.outputs["Color"])
+
+        else:
+            material.rw4.material_data_StaticModel.diffuse_texture = path
+
+            image = bpy.data.images.load(path)
+            image.colorspace_settings.name = 'Non-Color'
+
+            texture_node = material.node_tree.nodes.new("ShaderNodeTexImage")
+            texture_node.image = image
+            texture_node.location = (-524, -37)
+
+            normal_map_node = material.node_tree.nodes.new("ShaderNodeNormalMap")
+            normal_map_node.location = (-216, -86)
+
+            material.node_tree.links.new(normal_map_node.inputs["Color"],
+                                         texture_node.outputs["Color"])
+
+            material.node_tree.links.new(material.node_tree.nodes["Principled BSDF"].inputs["Normal"],
+                                         normal_map_node.outputs["Normal"])
+
+            material.node_tree.links.new(material.node_tree.nodes["Principled BSDF"].inputs["Specular"],
+                                         texture_node.outputs["Alpha"])

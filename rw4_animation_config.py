@@ -4,6 +4,7 @@ from bpy.props import (BoolProperty,
                        IntProperty,
                        FloatVectorProperty,
                        PointerProperty,
+                       FloatProperty
                        )
 
 
@@ -13,26 +14,28 @@ class RW4AnimProperties(bpy.types.PropertyGroup):
         bpy.types.Action.rw4 = PointerProperty(type=RW4AnimProperties)
 
         cls.is_morph_handle = BoolProperty(
-            name="Is morph handle",
-            description="Check if you want this animation to be a morph handle and not a normal animation",
+            name="Morph Handle",
+            description="Check if you want this action to be a morph handle and not a movement animation",
             default=False
         )
         cls.initial_pos = FloatVectorProperty(
-            name="Initial position",
+            name="Start Position",
             subtype='XYZ',
             precision=3,
-            description="Handle initial position"
+            description="Handle start position"
         )
         cls.final_pos = FloatVectorProperty(
-            name="Final position",
+            name="Final Position",
             subtype='XYZ',
             precision=3,
             description="Handle final position"
         )
-        cls.default_frame = IntProperty(
-            name="Default frame",
+        cls.default_progress = FloatProperty(
+            name="Default Progress",
             default=0,
-            min=0
+            min=0.0,
+            max=100.0,
+            subtype='PERCENTAGE'
         )
 
     @classmethod
@@ -72,7 +75,7 @@ class SPORE_PT_rw_anims(bpy.types.Panel):
             if item.is_morph_handle:
                 self.layout.prop(item, 'initial_pos')
                 self.layout.prop(item, 'final_pos')
-                self.layout.prop(item, 'default_frame')
+                self.layout.prop(item, 'default_progress')
         
 
 def register():

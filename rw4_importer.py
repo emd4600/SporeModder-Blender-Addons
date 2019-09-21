@@ -2,10 +2,11 @@ __author__ = 'Eric'
 
 from . import rw4_base, rw4_enums, rw4_material_config
 from .materials import rw_material_builder
-from .file_io import FileReader, ArrayFileReader, get_name
+from .file_io import FileReader, FileWriter, ArrayFileReader, get_name
 from mathutils import Matrix, Quaternion, Vector
 import math
 import bpy
+import os
 from collections import OrderedDict
 
 
@@ -98,13 +99,17 @@ class RW4ImporterSettings:
         self.import_materials = True
         self.import_skeleton = True
         self.import_animations = True
+        self.extract_textures = True
+        self.texture_format = 'DDS'
 
 
 class RW4Importer:
-    def __init__(self, render_ware: rw4_base.RenderWare4, file: FileReader, settings: RW4ImporterSettings):
+    def __init__(self,
+                 render_ware: rw4_base.RenderWare4, file: FileReader, filepath: str, settings: RW4ImporterSettings):
         # For blender objects, we use the prefix b
         self.render_ware = render_ware
         self.file = file
+        self.filepath = filepath
         self.settings = settings
 
         self.meshes_dict = {}  # vertexBuffer -> b_object
@@ -231,7 +236,7 @@ class RW4Importer:
             b_modifier.object = self.b_armature_object
             b_modifier.use_vertex_groups = True
 
-        return b_mesh
+        return b_mesh, b_object
 
     def import_vertex_buffer_mesh(self, mesh_link):
         vbuffer = mesh_link.mesh.vertex_buffers[0]
@@ -285,7 +290,7 @@ class RW4Importer:
             b_modifier.object = self.b_armature_object
             b_modifier.use_vertex_groups = True
 
-        return b_mesh
+        return b_mesh, b_object
 
     def import_meshes(self):
         mesh_links = self.render_ware.get_objects(rw4_base.MeshCompiledStateLink.type_code)
@@ -299,19 +304,43 @@ class RW4Importer:
             if b_object is not None:
                 b_mesh = b_object.data
             elif vbuffer is None:
-                b_mesh = self.import_blend_shape_mesh(mesh_link)
+                b_mesh, b_object = self.import_blend_shape_mesh(mesh_link)
             else:
-                b_mesh = self.import_vertex_buffer_mesh(mesh_link)
+                b_mesh, b_object = self.import_vertex_buffer_mesh(mesh_link)
 
             # Configure material for the mesh
             b_material = bpy.data.materials.new(f"Mesh-{self.render_ware.get_index(mesh_link)}")
+            b_material.use_nodes = True
             b_mesh.materials.append(b_material)
 
-            if self.settings.import_materials and len(mesh_link.compiled_states) > 0:
+            if self.settings.import_materials and mesh_link.compiled_states:
                 material_builder = rw_material_builder.RWMaterialBuilder()
-                material_builder.from_compiled_state(ArrayFileReader(mesh_link.compiled_states[0].data))
+                material_builder.from_compiled_state(ArrayFileReader(mesh_link.compiled_states[0].data),
+                                                     self.render_ware)
 
                 rw4_material_config.parse_material_builder(material_builder, b_material.rw4)
+                active_material = rw4_material_config.get_active_material(b_material.rw4)
+
+                if self.settings.extract_textures and active_material is not None:
+                    material_class = active_material.material_class
+
+                    for texture_slot in material_builder.texture_slots:
+                        if texture_slot.texture_raster is not None:
+                            path_no_extension = f"{self.filepath[:self.filepath.rindex('.')]}-" \
+                                                f"{self.render_ware.get_index(texture_slot.texture_raster)}"
+
+                            path = path_no_extension + '.' + self.settings.texture_format.lower()
+
+                            with open(path, 'wb') as file:
+                                texture_slot.texture_raster.to_dds().write(FileWriter(file))
+
+                            if self.settings.texture_format != 'DDS':
+                                image = bpy.data.images.load(path)
+                                image.file_format = self.settings.texture_format
+                                image.save_render(path)
+                                bpy.data.images.remove(image)
+
+                            material_class.set_texture(b_object, b_material, texture_slot.sampler_index, path)
 
             first_tri = mesh_link.mesh.first_index // 3
             for i in range(first_tri, first_tri + mesh_link.mesh.triangle_count):
@@ -433,9 +462,9 @@ class RW4Importer:
         # We must do it even if the channel didn't have a keyframe there, because it might be used by other channels
         for time, pose_bones in keyframe_poses.items():
             branches = []  # Used as an stack
-            previous_rot = Matrix.Identity(3)
-            previous_loc = Vector((0, 0, 0))
-            previous_scale = Vector((1.0, 1.0, 1.0))  # inverse scale
+            parent_rot = Matrix.Identity(3)
+            parent_loc = Vector((0, 0, 0))
+            parent_scale = Vector((1.0, 1.0, 1.0))  # inverse scale
 
             for c, (pose_bone, bone, skin) in enumerate(zip(pose_bones, self.bones, self.skin_data)):
                 skip_bone = pose_bone is None
@@ -445,11 +474,11 @@ class RW4Importer:
                 # Apply the scale
                 scale_matrix = Matrix.Diagonal(pose_bone.s)
                 parent_inv_scale = \
-                    Matrix.Diagonal((1.0 / previous_scale.x, 1.0 / previous_scale.y, 1.0 / previous_scale.z))
-                m = parent_inv_scale @ (pose_bone.r.to_matrix() @ scale_matrix)
-                m = previous_rot @ m
+                    Matrix.Diagonal((1.0 / parent_scale.x, 1.0 / parent_scale.y, 1.0 / parent_scale.z))
+                scaled_m = parent_inv_scale @ (pose_bone.r.to_matrix() @ scale_matrix)
+                m = parent_rot @ scaled_m
 
-                t = previous_rot @ pose_bone.t + previous_loc
+                t = parent_rot @ pose_bone.t + parent_loc
 
                 if not skip_bone:
                     dst_r = m @ skin.matrix.inverted()
@@ -460,19 +489,19 @@ class RW4Importer:
                     channel_keyframes[c].append(Matrix.Translation(dst_t) @ dst_r.to_4x4())
 
                 if bone.flags == rw4_base.SkeletonBone.TYPE_ROOT:
-                    previous_rot = m
-                    previous_loc = t
-                    previous_scale = pose_bone.s
+                    parent_rot = m
+                    parent_loc = t
+                    parent_scale = pose_bone.s
 
                 elif bone.flags == rw4_base.SkeletonBone.TYPE_LEAF:
                     if branches:
-                        previous_rot, previous_loc, previous_scale = branches.pop()
+                        parent_rot, parent_loc, parent_scale = branches.pop()
 
                 elif bone.flags == rw4_base.SkeletonBone.TYPE_BRANCH:
-                    branches.append((previous_rot, previous_loc, previous_scale))
-                    previous_rot = m
-                    previous_loc = t
-                    previous_scale = pose_bone.s
+                    branches.append((parent_rot, parent_loc, parent_scale))
+                    parent_rot = m
+                    parent_loc = t
+                    parent_scale = pose_bone.s
 
         return channel_keyframes
 
@@ -591,6 +620,8 @@ class RW4Importer:
             self.import_animation_shape_key(animation, b_action)
 
         else:
+            b_action.id_root = 'OBJECT'
+
             bpy.context.view_layer.objects.active = self.b_armature_object
             bpy.ops.object.mode_set(mode='POSE')
 
@@ -642,8 +673,7 @@ class RW4Importer:
             b_action.rw4.is_morph_handle = True
             b_action.rw4.initial_pos = handle.start_pos
             b_action.rw4.final_pos = handle.end_pos
-            b_action.rw4.default_frame = \
-                int(handle.default_progress * handle.animation.length / rw4_base.KeyframeAnim.FPS)
+            b_action.rw4.default_progress = handle.default_progress * 100
 
         if anim_objects:
             for i, anim in enumerate(anim_objects[0].animations.values()):
@@ -657,14 +687,14 @@ class RW4Importer:
         bpy.context.scene.frame_set(0)
 
 
-def import_rw4(file, settings):
+def import_rw4(file, filepath, settings):
     file_reader = FileReader(file)
 
     render_ware = rw4_base.RenderWare4()
 
     render_ware.read(file_reader)
 
-    importer = RW4Importer(render_ware, file_reader, settings)
+    importer = RW4Importer(render_ware, file_reader, filepath, settings)
     try:
         importer.process()
     except rw4_base.ModelError as e:

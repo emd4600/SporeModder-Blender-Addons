@@ -77,13 +77,8 @@ class ImportRW4(bpy.types.Operator, ImportHelper):
     filename_ext = ".rw4"
     filter_glob: bpy.props.StringProperty(default="*.rw4", options={'HIDDEN'})
 
-    import_materials: bpy.props.BoolProperty(
-        name="Import Materials",
-        description="",
-        default=True
-    )
     import_skeleton: bpy.props.BoolProperty(
-        name="Import Skeleton [EXPERIMENTAL]",
+        name="Import Skeleton",
         description="",
         default=True
     )
@@ -92,6 +87,34 @@ class ImportRW4(bpy.types.Operator, ImportHelper):
         description="If present, import animation movements and morphs",
         default=True
     )
+    import_materials: bpy.props.BoolProperty(
+        name="Import Materials",
+        description="",
+        default=True
+    )
+    extract_textures: bpy.props.BoolProperty(
+        name="Extract Textures",
+        default=True
+    )
+    texture_format: bpy.props.EnumProperty(
+        items=(("PNG", "PNG", "Extract the textures as .png images"),
+               ("DDS", "DDS", "Extract the textures as the original .dds files; "
+                              "Blender might not display them correctly")),
+        default="DDS"
+    )
+
+    def draw(self, context):
+        layout = self.layout
+
+        layout.prop(self, "import_skeleton")
+        layout.prop(self, "import_animations")
+        layout.prop(self, "import_materials")
+
+        if self.import_materials:
+            layout.prop(self, "extract_textures")
+
+            if self.extract_textures:
+                layout.prop(self, "texture_format", expand=True)
 
     def execute(self, context):
         from .rw4_importer import RW4ImporterSettings, import_rw4
@@ -100,9 +123,11 @@ class ImportRW4(bpy.types.Operator, ImportHelper):
         settings.import_materials = self.import_materials
         settings.import_skeleton = self.import_skeleton
         settings.import_animations = self.import_animations
+        settings.extract_textures = self.extract_textures
+        settings.texture_format = self.texture_format
 
         with open(self.filepath, 'br') as file:
-            return import_rw4(file, settings)
+            return import_rw4(file, self.filepath, settings)
 
 
 class ExportRW4(bpy.types.Operator, ExportHelper):
