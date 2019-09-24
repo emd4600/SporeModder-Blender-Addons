@@ -588,8 +588,8 @@ class RW4Exporter:
                 calculate_tangents(blended_vertices, faces)
 
                 for v in blended_vertices['tangent']:
-                    data.pack('<fff', *v)
-                    data.write_int(0)
+                    tangent_data.pack('<fff', *v)
+                    tangent_data.write_int(0)
 
             obj.to_mesh_clear()
             shape_key.value = 0.0
@@ -612,9 +612,12 @@ class RW4Exporter:
                 data.write_int(1)
 
         if 'blendIndices' in vertices:
+            blend_shape_buffer.bone_indices_count = 4
             blend_shape_buffer.offsets[rw4_base.BlendShapeBuffer.INDEX_BLENDINDICES] = data.tell()
             for v in vertices['blendIndices']:
                 data.pack('<HHHH', *v)
+        else:
+            blend_shape_buffer.bone_indices_count = 0
 
         if 'blendWeights' in vertices:
             blend_shape_buffer.offsets[rw4_base.BlendShapeBuffer.INDEX_BLENDWEIGHTS] = data.tell()

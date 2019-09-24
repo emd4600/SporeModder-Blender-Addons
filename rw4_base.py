@@ -1626,9 +1626,9 @@ class BlendShape(RWObject):
         file.write_int(0)
         file.write_int(0)
 
-        file.write_int(self.render_ware.add_sub_reference(self, 0x1C))
+        file.write_int(self.shape_times_index)
         file.write_int(len(self.shape_ids))
-        file.write_int(self.render_ware.add_sub_reference(self, 0x1C + len(self.shape_ids) * 4))
+        file.write_int(self.shape_ids_index)
         file.write_int(len(self.shape_ids))
         file.write_uint(self.id)
 
@@ -1651,6 +1651,7 @@ class BlendShapeBuffer(RWObject):
         super().__init__(render_ware)
         self.shape_count = shape_count
         self.vertex_count = vertex_count
+        self.bone_indices_count = 0
         self.offsets = [-1] * 11
         self.data = None
 
@@ -1681,7 +1682,7 @@ class BlendShapeBuffer(RWObject):
         file.write_int(self.shape_count)
         file.write_int(self.vertex_count)
         file.write_int(0)
-        file.write_int(self.shape_count)
+        file.write_int(self.bone_indices_count)
 
         write_alignment(file, 16)
         file.write(self.data)
