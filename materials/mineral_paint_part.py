@@ -5,6 +5,10 @@ from .rw_material_builder import RWMaterialBuilder, SHADER_DATA, RWTextureSlot
 from .. import rw4_base
 import struct
 import bpy
+import bpy.utils.previews
+import os
+from mathutils import Vector
+from math import acos, fabs
 from bpy.props import (StringProperty,
                        BoolProperty,
                        IntProperty,
@@ -12,6 +16,147 @@ from bpy.props import (StringProperty,
                        EnumProperty,
                        PointerProperty
                        )
+
+custom_icons = None
+
+
+def uvproj_project_xy(co, _, uv_scale, uv_offset):
+    return (co.x * uv_scale.x + uv_offset.x,
+            co.y * uv_scale.y + uv_offset.y)
+
+
+def uvproj_project_xz(co, _, uv_scale, uv_offset):
+    return (co.x * uv_scale.x + uv_offset.x,
+            co.z * uv_scale.y + uv_offset.y)
+
+
+def uvproj_project_yz(co, _, uv_scale, uv_offset):
+    return (co.y * uv_scale.x + uv_offset.x,
+            co.z * uv_scale.y + uv_offset.y)
+
+
+def uvproj_cylindrical_x(co, _, uv_scale, uv_offset):
+    centre = co.yz - uv_offset
+    return (acos(centre.x / centre.length) * uv_scale.x * (4 / 3.14159),
+            co.x * uv_scale.y)
+
+
+def uvproj_cylindrical_y(co, _, uv_scale, uv_offset):
+    centre = co.xz - uv_offset
+    return (acos(centre.x / centre.length) * uv_scale.x * (4 / 3.14159),
+            co.y * uv_scale.y)
+
+
+def uvproj_cylindrical_z(co, _, uv_scale, uv_offset):
+    centre = co.xy - uv_offset
+    return (acos(centre.x / centre.length) * uv_scale.x * (4 / 3.14159),
+            co.z * uv_scale.y)
+
+
+def uvproj_disc(co, _, uv_scale, uv_offset):
+    centre = co.xy - uv_offset
+    return (acos(centre.x / centre.length) * uv_scale.x * (4 / 3.14159),
+            centre.length * uv_scale.y)
+
+
+def hlsl_product(a, b):
+    return Vector([a1 * a2 for a1, a2 in zip(a, b)])
+
+
+def hlsl_step(a, x):
+    return Vector([(1.0 if x_ >= a_ else 0.0) for a_, x_ in zip(a, x)])
+
+
+def hlsl_sign(v):
+    values = []
+    for x in v:
+        if x == 0.0:
+            values.append(0.0)
+        elif x > 0.0:
+            values.append(1.0)
+        else:
+            values.append(-1.0)
+    return Vector(values)
+
+
+def uvproj_boxmap(co, normal, uv_scale, uv_offset):
+    an = Vector([fabs(x) for x in normal])
+    box_mask = hlsl_step(an.yzx, an)
+    box_mask = Vector(hlsl_product(box_mask, hlsl_step(an.zxy, an)))
+    sn = hlsl_sign(normal)
+    box_mask = hlsl_product(box_mask, Vector((sn.x, -sn.y, 1.0)))
+    uv_x = box_mask.dot(co.yxx) * uv_scale.x
+    box_mask = hlsl_product(box_mask, Vector((sn.x, -sn.y, sn.z)))
+    uv_y = box_mask.dot(co.zzy) * uv_scale.y
+    return uv_x, uv_y
+
+
+UV_PROJECTION = {
+    'ProjectXY': uvproj_project_xy,
+    'ProjectXZ': uvproj_project_xz,
+    'ProjectYZ': uvproj_project_yz,
+    'BoxMap': uvproj_boxmap,
+    'CylindricalX': uvproj_cylindrical_x,
+    'CylindricalY': uvproj_cylindrical_y,
+    'CylindricalZ': uvproj_cylindrical_z,
+    'Disc': uvproj_disc
+}
+
+
+def apply_uv_projection(_, __):
+    return
+    #TODO consider in future updates
+    obj = bpy.context.active_object
+    mesh = obj.data
+    mat = obj.active_material
+    rw = mat.rw4.material_data_MineralPaintPart
+    if not mesh.uv_layers:
+        uv_data = mesh.uv_layers.new().data
+    else:
+        uv_data = mesh.uv_layers.active.data
+    applied_vertices = [None] * len(mesh.vertices)
+
+    for poly in obj.data.polygons:
+        if mesh.materials[poly.material_index] != mat:
+            continue
+
+        for i in range(poly.loop_start, poly.loop_start + poly.loop_total):
+            uv = applied_vertices[mesh.loops[i].vertex_index]
+            if uv is None:
+                vertex = mesh.vertices[mesh.loops[i].vertex_index]
+                uv = UV_PROJECTION[rw.uv_projection](
+                    Vector(vertex.co), Vector(vertex.normal), Vector(rw.uv_scale), Vector(rw.uv_offset)
+                )
+                applied_vertices[mesh.loops[i].vertex_index] = uv
+
+            uv_data[i].uv[0] = uv[0]
+            uv_data[i].uv[1] = uv[1]
+
+
+def projection_items_callback(_, __):
+    global custom_icons
+    if custom_icons is None:
+        custom_icons = bpy.utils.previews.new()
+        addon_path = os.path.dirname(os.path.realpath(__file__))
+        icons_dir = os.path.join(os.path.dirname(addon_path), "icons")
+        for name in ("ProjectXY", "ProjectXZ", "ProjectYZ", "BoxMap",
+                     "CylindricalX", "CylindricalY", "CylindricalZ", "Disc"):
+            custom_icons.load(name, os.path.join(icons_dir, f"{name}.png"), 'IMAGE')
+
+    return ('ProjectXY', "Project XY", "Applies texture as a plane with edges parallel to the X and Y axes."
+                                       " The texture is projected along the Z axis",
+            custom_icons["ProjectXY"].icon_id, 0), \
+           ('ProjectXZ', "Project XZ", "Applies texture as a plane with edges parallel to the X and Z axes."
+                                    " The texture is projected along the Y axis",
+            custom_icons["ProjectXZ"].icon_id, 1), \
+           ('ProjectYZ', "Project YZ", "Applies texture as a plane with edges parallel to the Y and Z axes."
+                                       " The texture is projected along the X axis",
+            custom_icons["ProjectYZ"].icon_id, 2), \
+           ('CylindricalX', "Cylindrical X", "", custom_icons["CylindricalX"].icon_id, 6), \
+           ('CylindricalY', "Cylindrical Y", "", custom_icons["CylindricalY"].icon_id, 7), \
+           ('CylindricalZ', "Cylindrical Z", "", custom_icons["CylindricalZ"].icon_id, 4), \
+           ('BoxMap', "BoxMap", "", custom_icons["BoxMap"].icon_id, 3), \
+           ('Disc', "Disc", "", custom_icons["Disc"].icon_id, 5)
 
 
 class MineralPaintPart(RWMaterial):
@@ -30,7 +175,7 @@ class MineralPaintPart(RWMaterial):
 
     paint_region: IntProperty(
         name="Paint Region",
-        description="When painting, all materials with the same paint region value will use the same paint.",
+        description="When painting, all materials with the same paint region value will use the same paint",
         default=1
     )
 
@@ -48,30 +193,24 @@ class MineralPaintPart(RWMaterial):
     uv_projection: EnumProperty(
         name="UV Projection",
         description="The projection decides how the paint texture is applied to the model. You should choose the "
-                    "option more appropiate for the geometry of the model.",
-        items=(
-            ('0', "Project XY", ""),  # 0
-            ('1', "Project XZ", ""),  # 1
-            ('2', "Project YZ", ""),  # 2
-            ('3', "BoxMap", ""),  # 3
-            ('4', "Cylindrical Z", ""),  # 4
-            ('5', "Disc", ""),  # 5
-            ('6', "Cylindrical X", ""),  # 6
-            ('7', "Cylindrical Y", ""),  # 7
-        )
+                    "option more appropiate for the geometry of the model",
+        items=projection_items_callback,
+        update=apply_uv_projection
     )
 
     uv_scale: FloatVectorProperty(
         name="UV Scale",
         default=(1.0, 1.0),
         step=0.1,
-        size=2
+        size=2,
+        update=apply_uv_projection
     )
     uv_offset: FloatVectorProperty(
         name="UV Offset",
         default=(0.0, 0.0),
         step=0.1,
-        size=2
+        size=2,
+        update=apply_uv_projection
     )
 
     @staticmethod
@@ -96,6 +235,8 @@ class MineralPaintPart(RWMaterial):
             layout.prop(data, 'diffuse_texture')
         else:
             layout.prop(data, 'paint_region')
+            if data.paint_mode == 'PAINT':
+                layout.label(text="Paint Texture might not work depending on the region.", icon='ERROR')
 
         if data.paint_mode == 'PAINT':
             layout.prop(data, 'uv_projection')
