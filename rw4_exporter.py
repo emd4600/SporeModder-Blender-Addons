@@ -658,6 +658,12 @@ class RW4Exporter:
                 self.warnings.add(error)
             # Still, process the model as more warnings might arise, so don't return
 
+        if obj.modifiers:
+            if len(obj.modifiers) > 1 or obj.modifiers[0].type != 'ARMATURE':
+                error = rw4_validation.error_modifiers(obj)
+                if error not in self.warnings:
+                    self.warnings.add(error)
+
         use_shape_keys = obj.data.shape_keys is not None and len(obj.data.shape_keys.key_blocks) > 1
         if use_shape_keys and self.b_mesh_objects:
             error = rw4_validation.error_shape_keys_multi_models()
