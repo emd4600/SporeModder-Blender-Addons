@@ -62,6 +62,10 @@ def error_texture_error(path):
     return f"Error reading texture {path}"
 
 
+def error_modifiers(obj):
+    return f"Object {obj.name} has modifiers, please apply them if you want the changes exported"
+
+
 def validate_armatures(layout):
     armature = None
 

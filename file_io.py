@@ -241,7 +241,7 @@ SPORE_NAMES = {
     0x2BE7B75B: 'DeformAxisLeftFront',
     0xB9D307D8: 'DeformRadius',
     0xBB7F0931: 'DeformRadiusTop',
-    0x3AF5266F: 'DeformRadiusMiddle',  #TODO
+    0x3AF5266F: 'DeformRadiusMiddle',
     0x808C04D9: 'DeformRadiusBottom',
     0x92BF11C2: 'DeformAxisFront',
     0x2E6521F4: 'DeformAxisForward',
@@ -249,13 +249,13 @@ SPORE_NAMES = {
     0x2D3BFA19: 'DeformAxisRight',
     0x7CC96C02: 'DeformAxisLeft',
     0xD02751DE: 'DeformAxisUp',
-    0x884317A9: 'DeformBoneBaseJoint',  #TODO
-    0x1B486C71: 'DeformBoneEndJoint',  #TODO
-    0x1F59DA43: 'DeformBoneMiddle',  #TODO
+    0x884317A9: 'DeformBoneBaseJoint',
+    0x1B486C71: 'DeformBoneEndJoint',
+    0x1F59DA43: 'DeformBoneMiddle',
     0x267AFA7C: 'DeformThickness',  #TODO
     0x837EB7F4: 'DeformAxleLength',  #TODO
-    0xF320BA37: 'BoneLength',  #TODO
-    0x503283AA: 'Nudge',  #TODO
+    0xF320BA37: 'BoneLength',
+    0x503283AA: 'Nudge',
     0xD0BE09E0: 'joint1',
     0xD0BE09E2: 'joint3',
     0xD0BE09E3: 'joint2',
