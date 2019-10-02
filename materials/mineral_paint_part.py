@@ -91,7 +91,7 @@ def uvproj_boxmap(co, normal, uv_scale, uv_offset):
     return uv_x, uv_y
 
 
-UV_PROJECTION = {
+UV_PROJECTION_METHODS = {
     'ProjectXY': uvproj_project_xy,
     'ProjectXZ': uvproj_project_xz,
     'ProjectYZ': uvproj_project_yz,
@@ -100,6 +100,17 @@ UV_PROJECTION = {
     'CylindricalY': uvproj_cylindrical_y,
     'CylindricalZ': uvproj_cylindrical_z,
     'Disc': uvproj_disc
+}
+
+UV_PROJECTION = {
+    'ProjectXY': 0,
+    'ProjectXZ': 1,
+    'ProjectYZ': 2,
+    'BoxMap': 3,
+    'CylindricalX': 6,
+    'CylindricalY': 7,
+    'CylindricalZ': 4,
+    'Disc': 5
 }
 
 
@@ -124,7 +135,7 @@ def apply_uv_projection(_, __):
             uv = applied_vertices[mesh.loops[i].vertex_index]
             if uv is None:
                 vertex = mesh.vertices[mesh.loops[i].vertex_index]
-                uv = UV_PROJECTION[rw.uv_projection](
+                uv = UV_PROJECTION_METHODS[rw.uv_projection](
                     Vector(vertex.co), Vector(vertex.normal), Vector(rw.uv_scale), Vector(rw.uv_offset)
                 )
                 applied_vertices[mesh.loops[i].vertex_index] = uv
@@ -274,7 +285,7 @@ class MineralPaintPart(RWMaterial):
         elif material_data.paint_mode == 'PAINT':
             material.add_shader_data(SHADER_DATA['uvTweak'], struct.pack(
                 '<iffff',
-                int(material_data.uv_projection),
+                UV_PROJECTION[material_data.uv_projection],
                 material_data.uv_scale[0],
                 material_data.uv_scale[1],
                 material_data.uv_offset[0],
@@ -331,7 +342,7 @@ class MineralPaintPart(RWMaterial):
             material_data.use_paint_texture = True
 
             values = struct.unpack('<iffff', sh_data.data)
-            material_data.uv_projection = str(values[0])
+            material_data.uv_projection = next(key for key in UV_PROJECTION if UV_PROJECTION[key] == values[0])
             material_data.uv_scale[0] = values[1]
             material_data.uv_scale[1] = values[2]
             material_data.uv_offset[0] = values[3]
