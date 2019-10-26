@@ -59,6 +59,7 @@ class Preferences(bpy.types.AddonPreferences):
 class ImportGMDL(bpy.types.Operator, ImportHelper):
     bl_idname = "import_my_format.gmdl"
     bl_label = "Import GMDL"
+    bl_description = "Import a .gmdl (creation) model from Spore"
 
     filename_ext = ".gmdl"
     filter_glob: bpy.props.StringProperty(default="*.gmdl", options={'HIDDEN'})
@@ -73,6 +74,7 @@ class ImportGMDL(bpy.types.Operator, ImportHelper):
 class ImportRW4(bpy.types.Operator, ImportHelper):
     bl_idname = "import_my_format.rw4"
     bl_label = "Import RW4"
+    bl_description = "Import a .rw4 model from Spore"
 
     filename_ext = ".rw4"
     filter_glob: bpy.props.StringProperty(default="*.rw4", options={'HIDDEN'})
@@ -133,6 +135,7 @@ class ImportRW4(bpy.types.Operator, ImportHelper):
 class ExportRW4(bpy.types.Operator, ExportHelper):
     bl_idname = "export_my_format.rw4"
     bl_label = "Export RW4"
+    bl_description = "Export the model to Spore .rw4 format"
 
     filename_ext = ".rw4"
     filter_glob: bpy.props.StringProperty(default="*.rw4", options={'HIDDEN'})

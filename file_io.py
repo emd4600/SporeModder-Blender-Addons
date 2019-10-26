@@ -5,6 +5,9 @@ class FileReader:
     def __init__(self, buffer):
         self.buffer = buffer
 
+    def __len__(self):
+        return len(self.buffer)
+
     def read_byte(self, endian='<'):
         return struct.unpack(endian + 'b', self.buffer.read(1))[0]
 
@@ -109,6 +112,9 @@ class ArrayFileReader(FileReader):
 class FileWriter:
     def __init__(self, buffer):
         self.buffer = buffer
+
+    def __len__(self):
+        return len(self.buffer)
 
     def write_byte(self, value, endian='<'):
         self.buffer.write(struct.pack(endian + 'b', value))

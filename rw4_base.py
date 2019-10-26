@@ -1666,8 +1666,8 @@ class BlendShapeBuffer(RWObject):
 
         self.shape_count = file.read_int()
         self.vertex_count = file.read_int()
-        # ??
-        file.skip_bytes(8)
+        file.skip_bytes(4)
+        self.bone_indices_count = file.read_int()
 
         self.data = file.read(self.section_info.data_size - 64)
 

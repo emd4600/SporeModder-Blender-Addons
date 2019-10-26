@@ -216,21 +216,23 @@ class RW4Importer:
             blend_indices = [-1] * vertex_count
             blend_weights = [0.0] * vertex_count
             stream.seek(buffer.offsets[rw4_base.BlendShapeBuffer.INDEX_BLENDINDICES])
+            fmt = '<' + 'H'*buffer.bone_indices_count
             for i in range(vertex_count):
-                blend_indices[i] = stream.unpack('<HHHH')
+                blend_indices[i] = stream.unpack(fmt)
 
             stream.seek(buffer.offsets[rw4_base.BlendShapeBuffer.INDEX_BLENDWEIGHTS])
+            fmt = '<' + 'f' * buffer.bone_indices_count
             for i in range(vertex_count):
-                blend_weights[i] = stream.unpack('<ffff')
+                blend_weights[i] = stream.unpack(fmt)
 
             for bbone in self.b_armature.bones:
                 b_object.vertex_groups.new(name=bbone.name)
 
             for v, (blend_index, blend_weight) in enumerate(zip(blend_indices, blend_weights)):
-                for i in range(4):
+                for i in range(buffer.bone_indices_count):
                     if blend_weight[i] != 0:
                         b_object.vertex_groups[blend_index[i] // 3].add(
-                            [v], blend_weight[i] / 255.0, 'REPLACE')
+                            [v], blend_weight[i], 'REPLACE')
 
             b_modifier = b_object.modifiers.new(f"Skeleton: {self.b_armature.name}", 'ARMATURE')
             b_modifier.object = self.b_armature_object

@@ -622,7 +622,7 @@ class RW4Exporter:
         if 'blendWeights' in vertices:
             blend_shape_buffer.offsets[rw4_base.BlendShapeBuffer.INDEX_BLENDWEIGHTS] = data.tell()
             for v in vertices['blendWeights']:
-                data.pack('<ffff', v[0]/255.0, v[1]/255.0, v[2]/255.0, v[3]/255.0)
+                data.pack('<ffff', v[0], v[1], v[2], v[3])
 
         blend_shape_buffer.data = data.buffer
         self.render_ware.add_object(self.blend_shape)
