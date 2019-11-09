@@ -187,7 +187,7 @@ class MineralPaintPart(RWMaterial):
     paint_region: IntProperty(
         name="Paint Region",
         description="When painting, all materials with the same paint region value will use the same paint",
-        default=1
+        default=7
     )
 
     paint_mode: EnumProperty(
