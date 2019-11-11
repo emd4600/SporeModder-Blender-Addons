@@ -290,7 +290,20 @@ class RW4Exporter:
             indices[i] = index * 3
             weights[i] = weight
 
-        if total_weight > 255:
+        if total_weight == 256:
+            for i in range(4):
+                if weights[i] != 0:
+                    weights[i] = weights[i] - 1
+                    total_weight -= 1
+                    break
+        elif total_weight == 254:
+            for i in range(4):
+                if weights[i] != 0:
+                    weights[i] = weights[i] + 1
+                    total_weight += 1
+                    break
+
+        if total_weight != 255:
             error = rw4_validation.error_not_normalized(obj)
             if error not in self.warnings:
                 self.warnings.add(error)
@@ -991,7 +1004,6 @@ class RW4Exporter:
         # 4. Add all the keyframes:
         for time, poses in keyframe_poses.items():
             scales = {}
-            print(poses)
             for name, pose in poses.items():
                 keyframe = channels[name].new_keyframe(time / rw4_base.KeyframeAnim.FPS)
 
@@ -1019,7 +1031,6 @@ class RW4Exporter:
                 # In importer:  t = parent_rot @ pose_bone.t + parent_loc
                 keyframe.loc = parent_pose.matrix.inverted() @ (t - parent_pose.translation)
 
-        print()
         # for name, pose in keyframe_poses[15].items():
         #     m = pose.matrix
         #     t = pose.translation
@@ -1030,10 +1041,6 @@ class RW4Exporter:
         #
         #     for i in range(3):
         #         print(f"skin_bones_data += struct.pack('ffff', {dst_r[i][0]}, {dst_r[i][1]}, {dst_r[i][2]}, {dst_t[i]})")
-
-        print()
-        for name, bone in zip(self.bones_skin, self.skeleton.bones):
-            print(f"{name}\t{bone.flags}")
 
     def export_actions(self):
 
