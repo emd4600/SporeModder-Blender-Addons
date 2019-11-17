@@ -263,17 +263,18 @@ class RW4Exporter:
 
         return raster
 
-    def process_vertex_bones(self, obj, b_vertex, vertex_dict):
+    def process_vertex_bones(self, obj, b_vertex, vertex_dict, base255):
         """
         Adds the bone indices and weights of the given vertex into the vertex attributes.
 
         :param obj: The Blender mesh object.
         :param b_vertex: The Blender vertex.
         :param vertex_dict: A dictionary of vertex attributes lists.
+        :param base255: If True, weights will be converted to 0-255 integer range
         """
         indices = [0, 0, 0, 0]
         # Special case: if there are no bone weights, we must do this or the model will be invisible
-        weights = [255, 0, 0, 0]
+        weights = [255, 0, 0, 0] if base255 else [1.0, 0, 0, 0]
         total_weight = 0
         for i, gr in enumerate(b_vertex.groups):
             v_group = obj.vertex_groups[gr.group]
@@ -285,33 +286,40 @@ class RW4Exporter:
                     self.warnings.add(error)
                 break
 
-            weight = round(gr.weight * 255)
+            weight = round(gr.weight * 255) if base255 else gr.weight
             total_weight += weight
             indices[i] = index * 3
             weights[i] = weight
 
-        if total_weight == 256:
-            for i in range(4):
-                if weights[i] != 0:
-                    weights[i] = weights[i] - 1
-                    total_weight -= 1
-                    break
-        elif total_weight == 254:
-            for i in range(4):
-                if weights[i] != 0:
-                    weights[i] = weights[i] + 1
-                    total_weight += 1
-                    break
+        if base255:
+            if total_weight == 256:
+                for i in range(4):
+                    if weights[i] != 0:
+                        weights[i] = weights[i] - 1
+                        total_weight -= 1
+                        break
+            elif total_weight == 254:
+                for i in range(4):
+                    if weights[i] != 0:
+                        weights[i] = weights[i] + 1
+                        total_weight += 1
+                        break
 
-        if total_weight != 255:
-            error = rw4_validation.error_not_normalized(obj)
-            if error not in self.warnings:
-                self.warnings.add(error)
+            if total_weight != 255:
+                error = rw4_validation.error_not_normalized(obj)
+                if error not in self.warnings:
+                    self.warnings.add(error)
+        else:
+            epsilon = 0.002
+            if total_weight > 1.0 + epsilon or total_weight < 1.0 - epsilon:
+                error = rw4_validation.error_not_normalized(obj)
+                if error not in self.warnings:
+                    self.warnings.add(error)
 
         vertex_dict['blendIndices'].append(indices)
         vertex_dict['blendWeights'].append(weights)
 
-    def process_mesh(self, obj, mesh, use_texcoord, use_bones):
+    def process_mesh(self, obj, mesh, use_texcoord, use_bones, base255):
         """
         Spore models only have one UV per-vertex, whereas Blender can have more than just one.
         This method converts a Blender mesh into a valid Spore mesh.
@@ -327,6 +335,7 @@ class RW4Exporter:
         :param mesh: The triangulated Blender mesh.
         :param use_texcoord: Whether UV texcoords must be processed.
         :param use_bones: Whether bone indices/weights must be processed.
+        :param base255: If True, bone weights will be converted to 0-255 integer range.
         :returns: A tuple of (vertices, triangles, indices_map)
         """
         # The result; triangles are (i, j, k, material_index)
@@ -354,7 +363,7 @@ class RW4Exporter:
                 positions.append(Vector((b_vertex.co[0], b_vertex.co[1], b_vertex.co[2])))
                 normals.append(Vector((b_vertex.normal[0], b_vertex.normal[1], b_vertex.normal[2])))
                 if use_bones:
-                    self.process_vertex_bones(obj, b_vertex, vertices)
+                    self.process_vertex_bones(obj, b_vertex, vertices, base255)
 
                 indices_map.append(i)
 
@@ -391,7 +400,7 @@ class RW4Exporter:
                         texcoords.append(Vector((uv_data[i].uv[0], -uv_data[i].uv[1])))
 
                         if use_bones:
-                            self.process_vertex_bones(obj, b_vertex, vertices)
+                            self.process_vertex_bones(obj, b_vertex, vertices, base255)
 
                         indices_map.append(index)
                         triangles[t][i - face.loop_start] = current_processed_index
@@ -707,7 +716,8 @@ class RW4Exporter:
         # When there is BlendShape, Spore does not add the bone indices to the vertex format, I don't know why
         vertex_desc = self.create_vertex_description(use_texcoord, use_bones and not use_shape_keys)
 
-        vertices, triangles, indices_map = self.process_mesh(obj, blender_mesh, use_texcoord, use_bones)
+        vertices, triangles, indices_map = self.process_mesh(
+            obj, blender_mesh, use_texcoord, use_bones, not use_shape_keys)
 
         # When it's only for exporting we must remove it
         obj.to_mesh_clear()
@@ -839,8 +849,12 @@ class RW4Exporter:
                     bone.flags = rw4_base.SkeletonBone.TYPE_BRANCH_LEAF
                 else:
                     bone.flags = rw4_base.SkeletonBone.TYPE_LEAF
-            elif len(bbone.children) == 1:
+
+            # If it's not the only children
+            elif len(bbone.parent.children) > 1:
                 bone.flags = rw4_base.SkeletonBone.TYPE_BRANCH
+            else:
+                bone.flags = rw4_base.SkeletonBone.TYPE_ROOT
 
         self.skin_matrix_buffer.data.append(Matrix.Identity(4))
         self.animation_skin.data.append(self.create_animation_skin(bbone))
@@ -1031,7 +1045,7 @@ class RW4Exporter:
                 # In importer:  t = parent_rot @ pose_bone.t + parent_loc
                 keyframe.loc = parent_pose.matrix.inverted() @ (t - parent_pose.translation)
 
-        # for name, pose in keyframe_poses[15].items():
+        # for name, pose in keyframe_poses[30].items():
         #     m = pose.matrix
         #     t = pose.translation
         #     skin = self.bones_skin[name]
@@ -1095,9 +1109,9 @@ class RW4Exporter:
 
             self.render_ware.add_object(keyframe_anim)
 
-            if animations_list.animations:
-                self.render_ware.add_object(animations_list)
-                self.render_ware.add_sub_reference(animations_list, 8)
+        if animations_list.animations:
+            self.render_ware.add_object(animations_list)
+            self.render_ware.add_sub_reference(animations_list, 8)
 
         if original_skeleton_action is not None:
             self.b_armature_object.animation_data.action = original_skeleton_action
