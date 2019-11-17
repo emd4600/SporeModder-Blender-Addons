@@ -306,6 +306,13 @@ class SPORE_UL_rw_anims(bpy.types.UIList):
             layout.alignment = 'CENTER'
             layout.label(text=item.name, icon=custom_icon)
 
+    def filter_items(self, context, data, propname):
+        items = getattr(data, propname)
+        new_items = sorted(filter(lambda x: x.fcurves, items), key=lambda x: x.name)
+        filter_flags = [self.bitflag_filter_item if item in new_items else 0 for item in items]
+        filter_neworder = [new_items.index(item) if item in new_items else 0 for item in items]
+        return filter_flags, filter_neworder
+
 
 class SPORE_OT_auto_handles(bpy.types.Operator):
     bl_idname = "action.auto_rw_handle"
