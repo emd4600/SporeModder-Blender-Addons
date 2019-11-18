@@ -8,6 +8,10 @@ These addons allow you to export models to Spore using the 3D modelling software
 ![](https://i.imgur.com/SpY2Oe6.gif) ![](https://i.imgur.com/EtmiIoM.png)
 ![](https://i.imgur.com/5deypkwm.png) ![](https://i.imgur.com/fW0wBiS.png)
 
+
+![Tau_6](https://user-images.githubusercontent.com/8646916/63215006-735b7a80-c120-11e9-9a5f-2d54d82dee37.png)
+(a render of creature *Tau* made by *Deoxys*, using the GMDL importer)
+
 ## Tutorials:
  - [Materials Guide](https://github.com/emd4600/SporeModder-FX/wiki/Blender-Addons:-materials)
  - [Errors and how to fix them](https://github.com/emd4600/SporeModder-FX/wiki/Blender-Addons:-errors-and-how-to-fix-them)
