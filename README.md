@@ -1,4 +1,18 @@
-For more info about the features, check here: https://sporemodder.wordpress.com/sporemodder/
+## Features:
+These addons allow you to export models to Spore using the 3D modelling software [**Blender 2.8**](https://www.blender.org/). The addons include:
+
+ - **RW4 Exporter**: Used to export models into Spore to use them for your mods, with support for textures, materials, animations...
+ - **RW4 Importer**: Used to import most models in the game into Blender, so you can see how they are made.
+ - **GMDL Importer**: Used to import Spore creations into Blender (`.gmdl` files).
+
+![](https://i.imgur.com/SpY2Oe6.gif) ![](https://i.imgur.com/EtmiIoM.png)
+![](https://i.imgur.com/5deypkwm.png) ![](https://i.imgur.com/fW0wBiS.png)
+
+## Tutorials:
+ - [Materials Guide](https://github.com/emd4600/SporeModder-FX/wiki/Blender-Addons:-materials)
+ - [Errors and how to fix them](https://github.com/emd4600/SporeModder-FX/wiki/Blender-Addons:-errors-and-how-to-fix-them)
+ - [List of Part Animations](https://github.com/emd4600/SporeModder-FX/wiki/List-of-Part-Animations)
+
 
 ## Installation:
 1. Download the `SporeModder.Blender.2.8.Addons.zip` from the [latest release page](https://github.com/emd4600/SporeModder-Blender-Addons/releases/latest).
