@@ -13,6 +13,8 @@ These addons allow you to export models to Spore using the 3D modelling software
 (a render of creature *Tau* made by *Deoxys*, using the GMDL importer)
 
 ## Tutorials:
+ - [How to use the SporeModder Blender Addons](https://github.com/emd4600/SporeModder-FX/wiki/How-to-use-the-SporeModder-Blender-Addons)
+ - [How to export images as DDS](https://github.com/emd4600/SporeModder-FX/wiki/How-to:-export-DDS-textures)
  - [Materials Guide](https://github.com/emd4600/SporeModder-FX/wiki/Blender-Addons:-materials)
  - [Errors and how to fix them](https://github.com/emd4600/SporeModder-FX/wiki/Blender-Addons:-errors-and-how-to-fix-them)
  - [List of Part Animations](https://github.com/emd4600/SporeModder-FX/wiki/List-of-Part-Animations)
