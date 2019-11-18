@@ -7,10 +7,10 @@ bl_info = {
     "name": "SporeModder Add-ons",
     "author": "emd4600",
     "blender": (2, 80, 0),
-    "version": (2, 0, 0),
+    "version": (2, 1, 0),
     "location": "File > Import-Export",
     "description": "Import Spore .gmdl and .rw4 model formats. Export .rw4 format.",
-    "wiki_url": "https://github.com/Emd4600/SporeModder-FX/wiki",
+    "wiki_url": "https://github.com/emd4600/SporeModder-Blender-Addons#features",
     "tracker_url": "https://github.com/emd4600/SporeModder-Blender-Addons/issues/new",
     "category": "Import-Export"
 }
