@@ -157,7 +157,7 @@ class StaticModel(RWMaterial):
                                          texture_node.outputs["Color"])
 
         else:
-            material.rw4.material_data_StaticModel.diffuse_texture = path
+            material.rw4.material_data_StaticModel.normal_texture = path
 
             image = bpy.data.images.load(path)
             image.colorspace_settings.name = 'Non-Color'
