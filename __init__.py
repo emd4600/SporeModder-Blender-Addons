@@ -7,7 +7,7 @@ bl_info = {
     "name": "SporeModder Add-ons",
     "author": "emd4600",
     "blender": (2, 80, 0),
-    "version": (2, 1, 0),
+    "version": (2, 2, 0),
     "location": "File > Import-Export",
     "description": "Import Spore .gmdl and .rw4 model formats. Export .rw4 format.",
     "wiki_url": "https://github.com/emd4600/SporeModder-Blender-Addons#features",
@@ -68,7 +68,7 @@ class ImportGMDL(bpy.types.Operator, ImportHelper):
         from .gmdl_importer import import_gmdl
 
         with open(self.filepath, 'br') as file:
-            return import_gmdl(file, False)
+            return import_gmdl(file, False, self.filepath)
 
 
 class ImportRW4(bpy.types.Operator, ImportHelper):

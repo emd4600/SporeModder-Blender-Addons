@@ -1,5 +1,6 @@
 import bpy
 import ntpath
+import os
 from .file_io import FileReader, ResourceKey
 from . import rw4_enums
 
@@ -183,7 +184,56 @@ class SporeGameModel:
             print(file.tell())
 
 
-def import_gmdl(file, import_skeleton):
+def import_textures(b_mesh, filepath):
+    diffuse_path = f"{filepath[:filepath.rindex('.')]}__diffuse.tga"
+    if os.path.isfile(diffuse_path):
+        gmdl_name = os.path.split(filepath)[-1]
+        gmdl_name = gmdl_name[:gmdl_name.rindex('.')]
+
+        material = bpy.data.materials.new(gmdl_name)
+        material.use_nodes = True
+        b_mesh.materials.append(material)
+
+        # Diffuse
+        image = bpy.data.images.load(diffuse_path)
+        image.alpha_mode = 'NONE'
+        texture_node = material.node_tree.nodes.new("ShaderNodeTexImage")
+        texture_node.image = image
+        texture_node.location = (-524, 256)
+        material.node_tree.links.new(material.node_tree.nodes["Principled BSDF"].inputs["Base Color"],
+                                     texture_node.outputs["Color"])
+
+        normal_path = f"{filepath[:filepath.rindex('.')]}__normal.tga"
+        if os.path.isfile(normal_path):
+            image = bpy.data.images.load(normal_path)
+            image.colorspace_settings.name = 'Non-Color'
+
+            texture_node = material.node_tree.nodes.new("ShaderNodeTexImage")
+            texture_node.image = image
+            texture_node.location = (-524, -37)
+
+            normal_map_node = material.node_tree.nodes.new("ShaderNodeNormalMap")
+            normal_map_node.location = (-216, -86)
+
+            material.node_tree.links.new(normal_map_node.inputs["Color"],
+                                         texture_node.outputs["Color"])
+
+            material.node_tree.links.new(material.node_tree.nodes["Principled BSDF"].inputs["Normal"],
+                                         normal_map_node.outputs["Normal"])
+
+        specular_path = f"{filepath[:filepath.rindex('.')]}__specular.tga"
+        if os.path.isfile(normal_path):
+            image = bpy.data.images.load(specular_path)
+
+            texture_node = material.node_tree.nodes.new("ShaderNodeTexImage")
+            texture_node.image = image
+            texture_node.location = (-524, -322)
+
+            material.node_tree.links.new(material.node_tree.nodes["Principled BSDF"].inputs["Specular"],
+                                         texture_node.outputs["Color"])
+
+
+def import_gmdl(file, import_skeleton, filepath):
     result = {'FINISHED'}
 
     gmdl = SporeGameModel()
@@ -253,5 +303,7 @@ def import_gmdl(file, import_skeleton):
                 b_mesh.vertices[i].normal = rw4_enums.unpack_normals(v.normal)
 
         b_mesh.validate()
+
+        import_textures(b_mesh, filepath)
 
     return result
