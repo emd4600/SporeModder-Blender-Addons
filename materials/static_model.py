@@ -110,7 +110,8 @@ class StaticModel(RWMaterial):
 
         material.texture_slots.append(RWTextureSlot(
             sampler_index=1,
-            texture_raster=exporter.add_texture(material_data.normal_texture)
+            texture_raster=exporter.add_texture(material_data.normal_texture),
+            disable_stage_op=True
         ))
 
         return material

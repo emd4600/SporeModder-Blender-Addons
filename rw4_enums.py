@@ -585,7 +585,6 @@ def read_rw_vertex(elements, vertex_class, file: FileReader):
 
 
 def write_rw_vertex(elements, vertex, file: FileWriter):
-     # print(vertex)
     for i, element in enumerate(elements):
         file.pack(D3DDECLTYPE_FORMATS[element.type], *vertex[i])
 

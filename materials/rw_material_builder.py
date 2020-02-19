@@ -12,14 +12,14 @@ class RWTextureSlot:
     This class represents one texture slot of a material. The slot has a slot inedx, a reference to the
     texture, and sampler/stage states.
     """
-    def __init__(self, sampler_index=0, texture_raster=None, set_default_states=True):
+    def __init__(self, sampler_index=0, texture_raster=None, set_default_states=True, disable_stage_op=False):
         self.texture_stage_states = OrderedDict()
         self.sampler_states = OrderedDict()
         self.texture_raster = texture_raster
         self.sampler_index = sampler_index
 
         if set_default_states:
-            if texture_raster is not None:
+            if texture_raster is not None and not disable_stage_op:
                 self.texture_stage_states[rw4_enums.D3DTSS_COLOROP] = rw4_enums.D3DTOP_MODULATE
                 self.texture_stage_states[rw4_enums.D3DTSS_COLORARG1] = rw4_enums.D3DTA_TEXTURE
                 self.texture_stage_states[rw4_enums.D3DTSS_COLORARG2] = rw4_enums.D3DTA_DIFFUSE
