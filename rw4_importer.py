@@ -61,11 +61,12 @@ def interpolate_pose(animation, time, channel_index, keyframe_poses) -> PoseBone
     """Returns the interpolated pose at 'time' for the given channel."""
     # 1. Get the floor keyframe
     floor_kf = None  # (time, pose)
-    for kf_time, pose_bones in keyframe_poses.items():
-        if kf_time < time:
-            floor_kf = (kf_time, pose_bones[channel_index])
-        else:
+    for kf_time, pose_bones in sorted(keyframe_poses.items()):
+        if kf_time >= time:
             break
+        if pose_bones[channel_index] is not None:
+            floor_kf = (kf_time, pose_bones[channel_index])
+
     # No floor time? Malformed animation
     if floor_kf is None:
         raise rw4_base.ModelError(
@@ -73,8 +74,8 @@ def interpolate_pose(animation, time, channel_index, keyframe_poses) -> PoseBone
 
     # 2. Get the ceil keyframe
     ceil_kf = None  # (time, pose)
-    for kf_time, pose_bones in keyframe_poses.items():
-        if kf_time > time:
+    for kf_time, pose_bones in sorted(keyframe_poses.items()):
+        if kf_time > time and pose_bones[channel_index] is not None:
             ceil_kf = (kf_time, pose_bones[channel_index])
             break
 
@@ -432,7 +433,7 @@ class RW4Importer:
         """
         # 1. Clssify all keyframes by their time
         # [(time1, pose_bones), (time2, pose_bones), etc], one keyframe per channel per time
-        keyframe_poses = OrderedDict()
+        keyframe_poses = {}
         for c, channel in enumerate(animation.channels):
             for kf in channel.keyframes:
                 if kf.time not in keyframe_poses:
@@ -462,7 +463,7 @@ class RW4Importer:
 
         # Process for every channel for every time
         # We must do it even if the channel didn't have a keyframe there, because it might be used by other channels
-        for time, pose_bones in keyframe_poses.items():
+        for time, pose_bones in sorted(keyframe_poses.items()):
             branches = []  # Used as an stack
             parent_rot = Matrix.Identity(3)
             parent_loc = Vector((0, 0, 0))
