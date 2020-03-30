@@ -209,17 +209,25 @@ class RW4Exporter:
         else:
             return self.render_ware.get_index(None, rw4_base.INDEX_NO_OBJECT)
 
-    def add_texture(self, path):
+    def add_texture(self, path: str):
         """
-        Adds a texture to be exported in the RenderWare4. Only DXT5 DDS textures are supported.
+        Adds a texture to be exported in the RenderWare4. Only DDS textures are supported.
         If the path has already been exported, no new object is created.
 
+        If the path beigns with $, a raster will be added prepared for using a texture override.
+
         :param path: File path to the .dds texture.
-        :return: The Raster object created for this texture.
+        :return: The Raster object created for this texture, or a BaseResource if texture override is used.
         """
 
         if path in self.added_textures:
             return self.added_textures[path]
+
+        if path.startswith("$"):
+            buffer = rw4_base.TextureOverride(self.render_ware, path[1:])
+            self.render_ware.add_object(buffer)
+            self.added_textures[path] = buffer
+            return buffer
 
         raster = rw4_base.Raster(self.render_ware)
         data_buffer = rw4_base.BaseResource(self.render_ware)

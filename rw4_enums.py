@@ -139,7 +139,7 @@ D3DUSAGE_RESTRICT_SHARED_RESOURCE_DRIVER = 0x00001000
 
 
 def make_four_cc(arg):
-    return (ord(arg[0]) << 24) | (ord(arg[1]) << 16) | (ord(arg[2]) << 8) | ord(arg[3])
+    return (ord(arg[3]) << 24) | (ord(arg[2]) << 16) | (ord(arg[1]) << 8) | ord(arg[0])
 
 
 # D3DFORMAT

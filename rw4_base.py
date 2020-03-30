@@ -10,7 +10,7 @@ __author__ = 'Eric'
 import struct
 from mathutils import Matrix, Vector, Quaternion
 from collections import namedtuple
-from .file_io import FileReader, FileWriter, ArrayFileReader, write_alignment
+from .file_io import FileReader, FileWriter, ArrayFileReader, write_alignment, get_hash
 from . import rw4_enums
 
 
@@ -524,6 +524,29 @@ class BaseResource(RWObject):
         file.write(self.data)
 
 
+# Used by the ModAPI
+class TextureOverride(RWObject):
+    # This is actually the 'Light' type, but Spore does not use it
+    type_code = 0x20008
+    alignment = 4
+
+    def __init__(self, render_ware: RenderWare4, name: str):
+        super().__init__(render_ware)
+        self.name = name
+
+    def read(self, file: FileReader):
+        if file.read_uint() == get_hash("TextureOverride"):
+            self.name = ""
+            char = file.read(1)[0]
+            while char != 0:
+                self.name += chr(char)
+
+    def write(self, file: FileWriter):
+        file.write_uint(get_hash("TextureOverride"))
+        file.write(bytearray(self.name, "ascii"))
+        file.write_ubyte(0)
+
+
 class Raster(RWObject):
     type_code = 0x20003
     alignment = 4
@@ -543,7 +566,7 @@ class Raster(RWObject):
         self.texture_data = None
 
     def read(self, file: FileReader):
-        self.texture_format = file.read_int(endian='>')  # 00h
+        self.texture_format = file.read_int()  # 00h
         self.texture_flags = file.read_short()  # 04h
         self.volume_depth = file.read_ushort()  # 06h
         self.dx_base_texture = file.read_int()  # 08h
@@ -557,7 +580,7 @@ class Raster(RWObject):
         self.texture_data = self.render_ware.get_object(file.read_int())  # 1Ch
 
     def write(self, file: FileWriter):
-        file.write_int(self.texture_format, endian='>')
+        file.write_int(self.texture_format)
         file.write_short(self.texture_flags)
         file.write_ushort(self.volume_depth)
         file.write_int(self.dx_base_texture)
@@ -577,13 +600,43 @@ class Raster(RWObject):
         self.mipmap_levels = dds_texture.dwMipMapCount
         self.texture_format = dds_texture.ddsPixelFormat.dwFourCC
 
+        if self.texture_format == 0:
+            flags = dds_texture.ddsPixelFormat.dwFlags
+            if (flags & DDSTexture.DDSPixelFormat.DDPF_RGB) != 0:
+                if (flags & DDSTexture.DDSPixelFormat.DDPF_ALPHAPIXELS) != 0 or \
+                   (flags & DDSTexture.DDSPixelFormat.DDPF_ALPHA) != 0:
+                    self.texture_format = rw4_enums.D3DFMT_A8R8G8B8
+                else:
+                    self.texture_format = rw4_enums.D3DFMT_R8G8B8
+            elif (flags & DDSTexture.DDSPixelFormat.DDPF_ALPHAPIXELS) != 0 or \
+                    (flags & DDSTexture.DDSPixelFormat.DDPF_ALPHA) != 0:
+                self.texture_format = rw4_enums.D3DFMT_A8
+            else:
+                raise OSError("Texture format not supported")
+
     def to_dds(self):
         dds_texture = DDSTexture()
         dds_texture.dwWidth = self.width
         dds_texture.dwHeight = self.height
         dds_texture.dwDepth = self.volume_depth
         dds_texture.dwMipMapCount = self.mipmap_levels
-        dds_texture.ddsPixelFormat.dwFourCC = self.texture_format
+
+        if self.texture_format == rw4_enums.D3DFMT_A8R8G8B8:
+            dds_texture.ddsPixelFormat.dwFourCC = 0
+            dds_texture.ddsPixelFormat.dwFlags = \
+                DDSTexture.DDSPixelFormat.DDPF_RGB | DDSTexture.DDSPixelFormat.DDPF_ALPHAPIXELS
+            dds_texture.ddsPixelFormat.dwRGBBitCount = 32
+        elif self.texture_format == rw4_enums.D3DFMT_R8G8B8:
+            dds_texture.ddsPixelFormat.dwFourCC = 0
+            dds_texture.ddsPixelFormat.dwFlags = DDSTexture.DDSPixelFormat.DDPF_RGB
+            dds_texture.ddsPixelFormat.dwRGBBitCount = 24
+        elif self.texture_format == rw4_enums.D3DFMT_A8:
+            dds_texture.ddsPixelFormat.dwFourCC = 0
+            dds_texture.ddsPixelFormat.dwFlags = DDSTexture.DDSPixelFormat.DDPF_ALPHAPIXELS
+            dds_texture.ddsPixelFormat.dwRGBBitCount = 8
+        else:
+            dds_texture.ddsPixelFormat.dwFourCC = self.texture_format
+
         dds_texture.data = self.texture_data.data
         return dds_texture
 
@@ -1732,7 +1785,7 @@ class DDSTexture:
         def read(self, file: FileReader):
             self.dwSize = file.read_uint()
             self.dwFlags = file.read_uint()
-            self.dwFourCC = file.read_int(endian='>')
+            self.dwFourCC = file.read_uint()
             self.dwRGBBitCount = file.read_uint()
             self.dwRBitMask = file.read_uint()
             self.dwGBitMask = file.read_uint()
@@ -1742,9 +1795,7 @@ class DDSTexture:
         def write(self, file: FileWriter):
             file.write_uint(self.dwSize)
             file.write_uint(self.dwFlags)
-            # In Spore, 0x15 is uncompressed
-            typecode = 0 if self.dwFourCC == rw4_enums.D3DFMT_SPORE_UNCOMPRESSED else self.dwFourCC
-            file.write_int(typecode, endian='>')
+            file.write_uint(self.dwFourCC)
             file.write_uint(self.dwRGBBitCount)
             file.write_uint(self.dwRBitMask)
             file.write_uint(self.dwGBitMask)
@@ -1806,9 +1857,6 @@ class DDSTexture:
         file.read_int()
 
         if read_data:
-            if self.ddsPixelFormat.dwFourCC != rw4_enums.D3DFMT_DXT5:
-                raise ModelError("Only DXT5 textures supported", self)
-
             # go to the end of the file to calculate size
             file.buffer.seek(0, 2)
             buffer_size = file.tell() - 128
@@ -1820,11 +1868,19 @@ class DDSTexture:
     def write(self, file: FileWriter):
         file.write_int(0x44445320, endian='>')
 
-        # Only uncompressed or DXT5 supported
-        if self.ddsPixelFormat.dwFourCC == rw4_enums.D3DFMT_SPORE_UNCOMPRESSED:
+        # Microsoft documentation says something else, but it doesn't work with Gimp
+        if self.ddsPixelFormat.dwFourCC == rw4_enums.D3DFMT_A8:
+            self.dwPitchOrLinearSize = self.dwWidth * self.dwHeight
+        elif self.ddsPixelFormat.dwFourCC == rw4_enums.D3DFMT_R8G8B8:
+            self.dwPitchOrLinearSize = self.dwWidth * self.dwHeight * 3
+        elif self.ddsPixelFormat.dwFourCC == rw4_enums.D3DFMT_A8R8G8B8:
             self.dwPitchOrLinearSize = self.dwWidth * self.dwHeight * 4
         else:
-            self.dwPitchOrLinearSize = self.dwWidth * self.dwHeight
+            block_size = 16
+            if self.ddsPixelFormat.dwFourCC == rw4_enums.D3DFMT_DXT1:
+                block_size = 8
+
+            self.dwPitchOrLinearSize = max(1, ((self.dwWidth + 3) // 4)) * block_size
 
         file.pack('<7I', self.dwSize, self.dwFlags, self.dwHeight, self.dwWidth, self.dwPitchOrLinearSize,
                   self.dwDepth, self.dwMipMapCount)

@@ -328,7 +328,8 @@ class RW4Importer:
                     material_class = active_material.material_class
 
                     for texture_slot in material_builder.texture_slots:
-                        if texture_slot.texture_raster is not None:
+                        if texture_slot.texture_raster is not None and \
+                                isinstance(texture_slot.texture_raster, rw4_base.Raster):
                             path_no_extension = f"{self.filepath[:self.filepath.rindex('.')]}-" \
                                                 f"{self.render_ware.get_index(texture_slot.texture_raster)}"
 
