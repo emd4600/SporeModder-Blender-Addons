@@ -157,21 +157,22 @@ class SporeGameModel:
             for i in range(material_count):
                 self.read_material(file)
 
-            count1 = file.read_uint()
-            file.skip_bytes(count1 * 8)
+            print(file.tell())
+            count1 = file.read_uint()  # num of skeletons ?
+            file.skip_bytes(count1 * 8)  # second is number of bones
 
             part_count = file.read_uint()
             print(f"Part count: {part_count}")
 
             for p in range(part_count):
-                file.skip_bytes(0x38)
-                file.skip_bytes(0x38)
-                field_70 = file.read_uint()
+                file.skip_bytes(0x38)  # Transform
+                file.skip_bytes(0x38)  # Transform
+                field_70 = file.read_uint()  # for root, how many bones
                 key = file.unpack('<III')
                 var_1444 = file.read_uint()
 
                 print(f"field_70: {field_70}")
-                print(f"key: 0x{key[1]:08x}")
+                print(f"key: 0x{key[2]:08x}!0x{key[0]:08x}.0x{key[1]:08x}")
                 print(f"var_1444: {var_1444}")
 
                 if var_1444 != 0:

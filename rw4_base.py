@@ -271,6 +271,7 @@ class RenderWare4:
 
         # ??
         self.header.section_sub_references.p_sub_reference_offsets = file.tell()
+        file.write(bytearray(len(self.header.section_sub_references.sub_references) * 8))
 
         # Apparently this is necessary?
         file.write(bytearray(48))
