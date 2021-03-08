@@ -7,9 +7,9 @@ bl_info = {
     "name": "SporeModder Add-ons",
     "author": "emd4600",
     "blender": (2, 80, 0),
-    "version": (2, 4, 0),
+    "version": (2, 5, 0),
     "location": "File > Import-Export",
-    "description": "Import Spore .gmdl and .rw4 model formats. Export .rw4 format.",
+    "description": "Import Spore .gmdl and .rw4 model formats. Export .rw4 and .anim_t formats.",
     "wiki_url": "https://github.com/emd4600/SporeModder-Blender-Addons#features",
     "tracker_url": "https://github.com/emd4600/SporeModder-Blender-Addons/issues/new",
     "category": "Import-Export"
@@ -147,6 +147,21 @@ class ExportRW4(bpy.types.Operator, ExportHelper):
             return export_rw4(file)
 
 
+class ExportAnim(bpy.types.Operator, ExportHelper):
+    bl_idname = "export_my_format.anim_t"
+    bl_label = "Export Spore Animation"
+    bl_description = "Export the skeleton animation to Spore .anim_t format"
+
+    filename_ext = ".animation.anim_t"
+    filter_glob: bpy.props.StringProperty(default="*.anim_t", options={'HIDDEN'})
+
+    def execute(self, context):
+        from .anim_exporter import export_anim
+
+        with open(self.filepath, 'w') as file:
+            return export_anim(file)
+
+
 def gmdl_importer_menu_func(self, context):
     self.layout.operator(ImportGMDL.bl_idname, text="Spore GMDL Model (.gmdl)")
 
@@ -159,21 +174,27 @@ def rw4_exporter_menu_func(self, context):
     self.layout.operator(ExportRW4.bl_idname, text="Spore RenderWare 4 (.rw4)")
 
 
+def anim_exporter_menu_func(self, context):
+    self.layout.operator(ExportAnim.bl_idname, text="Spore Animation (.anim_t)")
+
+
 classes = (
     Preferences,
     ImportGMDL,
     ImportRW4,
-    ExportRW4
+    ExportRW4,
+    ExportAnim
 )
 
 
 def register():
     addon_updater_ops.register(bl_info)
 
-    from . import rw4_material_config, rw4_animation_config
+    from . import rw4_material_config, rw4_animation_config, anim_bone_config
 
     rw4_material_config.register()
     rw4_animation_config.register()
+    anim_bone_config.register()
 
     for c in classes:
         bpy.utils.register_class(c)
@@ -181,13 +202,15 @@ def register():
     bpy.types.TOPBAR_MT_file_import.append(gmdl_importer_menu_func)
     bpy.types.TOPBAR_MT_file_import.append(rw4_importer_menu_func)
     bpy.types.TOPBAR_MT_file_export.append(rw4_exporter_menu_func)
+    bpy.types.TOPBAR_MT_file_export.append(anim_exporter_menu_func)
 
 
 def unregister():
-    from . import rw4_material_config, rw4_animation_config
+    from . import rw4_material_config, rw4_animation_config, anim_bone_config
 
     rw4_material_config.unregister()
     rw4_animation_config.unregister()
+    anim_bone_config.unregister()
 
     for c in classes:
         bpy.utils.unregister_class(c)
@@ -195,6 +218,7 @@ def unregister():
     bpy.types.TOPBAR_MT_file_import.remove(gmdl_importer_menu_func)
     bpy.types.TOPBAR_MT_file_import.remove(rw4_importer_menu_func)
     bpy.types.TOPBAR_MT_file_export.remove(rw4_exporter_menu_func)
+    bpy.types.TOPBAR_MT_file_export.remove(anim_exporter_menu_func)
 
 
 if __name__ == "__main__":
