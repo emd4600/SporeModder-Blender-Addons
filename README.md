@@ -2,9 +2,11 @@
 These addons allow you to export models to Spore using the 3D modelling software [**Blender 2.8**](https://www.blender.org/). The addons include:
 
  - **RW4 Exporter**: Used to export models into Spore to use them for your mods, with support for textures, materials, animations...
- - **RW4 Importer**: Used to import most models in the game into Blender, so you can see how they are made.
+ - **ANIMATION Exporter**: Used to export animations that can be played by creatures in Spore.
  - **GMDL Importer**: Used to import Spore creations into Blender (`.gmdl` files).
+ - **RW4 Importer**: Used to import most models in the game into Blender, so you can see how they are made.
 
+![](https://i.imgur.com/TUdTBXq.gif)
 ![](https://i.imgur.com/SpY2Oe6.gif) ![](https://i.imgur.com/EtmiIoM.png)
 ![](https://i.imgur.com/5deypkwm.png) ![](https://i.imgur.com/fW0wBiS.png)
 
@@ -15,6 +17,7 @@ These addons allow you to export models to Spore using the 3D modelling software
 ## Tutorials:
  - [How to import creations into Blender](https://github.com/emd4600/SporeModder-FX/wiki/How-to-import-creations-into-Blender)
  - [How to use the SporeModder Blender Addons](https://github.com/emd4600/SporeModder-FX/wiki/How-to-use-the-SporeModder-Blender-Addons)
+ - [Exporting creature animations from Blender](https://github.com/emd4600/SporeModder-FX/wiki/Exporting-creature-animations-from-Blender)
  - [How to export images as DDS](https://github.com/emd4600/SporeModder-FX/wiki/How-to:-export-DDS-textures)
  - [Materials Guide](https://github.com/emd4600/SporeModder-FX/wiki/Blender-Addons:-materials)
  - [Errors and how to fix them](https://github.com/emd4600/SporeModder-FX/wiki/Blender-Addons:-errors-and-how-to-fix-them)
