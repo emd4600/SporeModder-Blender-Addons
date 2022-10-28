@@ -17,6 +17,7 @@ def requirements_to_string(item):
         text += f" hasGraspers {item.has_graspers}"
     if item.has_feet != 'ignore':
         text += f" hasFeet {item.has_feet}"
+    return text
 
 
 def event_source_to_string(source):
@@ -68,7 +69,7 @@ def context_query_to_string(item, prefix):
 
 
 def event_to_string(internal_name, event):
-    text = f"event {internal_name} -type {event.type}"
+    text = f"event {internal_name} {event.name} -type {event.type}"
 
     if event.requirements:
         text += f" -predicate {requirements_to_string(event)}"

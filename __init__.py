@@ -152,7 +152,7 @@ class ExportAnim(bpy.types.Operator, ExportHelper):
     bl_label = "Export Spore Animation"
     bl_description = "Export the skeleton animation to Spore .anim_t format"
 
-    filename_ext = ".animation.anim_t"
+    filename_ext = ".anim_t"
     filter_glob: bpy.props.StringProperty(default="*.anim_t", options={'HIDDEN'})
 
     def execute(self, context):
