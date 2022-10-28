@@ -280,7 +280,12 @@ def export_anim(file):
     times = list(keyframe_times)
     channels_output = []
     for channel in armature.spore_anim.channels:
-        bone = next(b for b in armature_object.pose.bones if b.name == channel.name)
+        bone_query = [b for b in armature_object.pose.bones if b.name == channel.name]
+        if not bone_query:
+            show_message_box(f"Bone named '{channel.name}' does not exist", "Error")
+            return {'CANCELLED'}
+
+        bone = bone_query[0]
         events = [ev for ev in armature.spore_anim.events if ev.channel_name == channel.name]
         event_times = [ev.play_frame for ev in events]
         channel_times = sorted(set(keyframe_times) | set(event_times))
