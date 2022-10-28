@@ -299,9 +299,11 @@ def import_gmdl(file, import_skeleton, filepath):
         b_mesh.update(calc_edges=True)
 
         # Apply the normals after updating
-        if v_buffer.vertex_format.has_element(rw4_enums.RWDECL_NORMAL):
-            for i, v in enumerate(v_buffer.vertices):
-                b_mesh.vertices[i].normal = rw4_enums.unpack_normals(v.normal)
+        # In Blender 3 'normal' is read-only (and apparently it was being ignored anyways)
+        if bpy.app.version[0] == 2:
+            if v_buffer.vertex_format.has_element(rw4_enums.RWDECL_NORMAL):
+                for i, v in enumerate(v_buffer.vertices):
+                    b_mesh.vertices[i].normal = rw4_enums.unpack_normals(v.normal)
 
         b_mesh.validate()
 
