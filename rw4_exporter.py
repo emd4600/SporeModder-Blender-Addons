@@ -286,7 +286,14 @@ class RW4Exporter:
         total_weight = 0
         for i, gr in enumerate(b_vertex.groups):
             v_group = obj.vertex_groups[gr.group]
-            index = next(i for i, bone in enumerate(self.b_armature_object.data.bones) if bone.name == v_group.name)
+            bone_query = [j for j, bone in enumerate(self.b_armature_object.data.bones) if bone.name == v_group.name]
+            if not bone_query:
+                error = rw4_validation.error_no_bone_for_vertex_group(v_group)
+                if error not in self.warnings:
+                    self.warnings.add(error)
+                    continue
+                
+            index = bone_query[0]
 
             if i == 4:
                 error = rw4_validation.error_vertex_bone_limit(obj)
@@ -1087,6 +1094,12 @@ class RW4Exporter:
                     self.warnings.add(error)
 
             is_shape_key = action.id_root == 'KEY'
+
+            if not is_shape_key and self.b_armature_object is None:
+                error = rw4_validation.error_action_but_no_armature(action)
+                if error not in self.warnings:
+                    self.warnings.add(error)
+                    continue
 
             skeleton_id = self.blend_shape.id if is_shape_key else file_io.get_hash(self.b_armature_object.name)
 

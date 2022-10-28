@@ -59,11 +59,19 @@ def error_texture_does_not_exist(path):
 
 
 def error_texture_error(path):
-    return f"Error reading texture {path}"
+    return f"Error reading texture '{path}'"
 
 
 def error_modifiers(obj):
-    return f"Object {obj.name} has modifiers, please apply them if you want the changes exported"
+    return f"Object {obj.name} has modifiers, please apply them if you want the changes exported."
+
+
+def error_action_but_no_armature(action):
+    return f"Action {action.name} does not use shape keys, but the armature does not exist either."
+
+
+def error_no_bone_for_vertex_group(v_group):
+    return f"There is a vertex group called {v_group.name}, but no bone exists with that name."
 
 
 def validate_armatures(layout):
