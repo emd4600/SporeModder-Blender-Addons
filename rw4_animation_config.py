@@ -146,14 +146,14 @@ def get_default_handle_position(name):
                     obj.data.shape_keys.animation_data is not None:
                 obj.data.shape_keys.animation_data.action = action
 
-    bpy.context.scene.frame_set(action.frame_range[0])
+    bpy.context.scene.frame_set(int(action.frame_range[0]))
     bbox1 = calc_global_bbox()
-    bpy.context.scene.frame_set(action.frame_range[1])
+    bpy.context.scene.frame_set(int(action.frame_range[1]))
     bbox2 = calc_global_bbox()
 
-    bpy.context.scene.frame_set(action.frame_range[0])
+    bpy.context.scene.frame_set(int(action.frame_range[0]))
     initial_pos = generator[0](bbox1, bbox2, 1.2, *generator[1:])
-    bpy.context.scene.frame_set(action.frame_range[1])
+    bpy.context.scene.frame_set(int(action.frame_range[1]))
     final_pos = generator[0](bbox1, bbox2, 1.2, *generator[1:])
 
     if initial_pos == final_pos:
