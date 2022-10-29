@@ -955,6 +955,12 @@ class RW4Exporter:
             match = re.search(r'\["([a-zA-Z_\-\s0-9.]+)"\]', fcurve.data_path)
             channel.channel_id = file_io.get_hash(match.group(1))
 
+            if channel.channel_id not in shape_ids:
+                error = rw4_validation.error_action_with_missing_shapes(action, match.group(1))
+                if error not in self.warnings:
+                    self.warnings.add(error)
+                continue
+
             shape_ids.remove(channel.channel_id)
 
             for i, b_keyframe in enumerate(fcurve.keyframe_points):

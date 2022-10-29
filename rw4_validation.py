@@ -74,6 +74,10 @@ def error_no_bone_for_vertex_group(v_group):
     return f"There is a vertex group called {v_group.name}, but no bone exists with that name."
 
 
+def error_action_with_missing_shapes(action, shape_name):
+    return f"Action {action.name} uses shape key {shape_name}, but not shape exists with that name."
+
+
 def validate_armatures(layout):
     armature = None
 
