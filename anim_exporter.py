@@ -167,8 +167,11 @@ def channel_header(channel):
     return text
 
 
-def info_keyframe_to_string(t, events, event_names):
+def info_keyframe_to_string(t, events, event_names, info_flags):
     text = f"\t\t{t}"
+
+    if info_flags != 0:
+        text += f" -flags 0x{info_flags:x}"
 
     evs = [ev for ev in events if ev.play_frame == t]
     if evs:
@@ -208,6 +211,7 @@ class AnimChannelOutput:
         self.bone = bone
         self.events = events
         self.channel_times = channel_times
+        self.channel_info_flags = []
         self.rigblock_names = rigblock_names
         self.position_text = ""
         self.rotation_text = ""
@@ -266,6 +270,10 @@ def export_anim(file):
 
     keyframe_times = sorted(keyframe_times)
 
+    # The anim editor in SMFX detects when the file changes, but writing all the text
+    # using file.write updates the file multiple times
+    # We want to write it all in one call, so we will build the whole string first, and then just call file.write() once
+
     text = f"length {keyframe_times[-1] + 1}\n"
     if armature.spore_anim.requirements:
         text += f"branchPredicate {requirements_to_string(armature.spore_anim)}\n"
@@ -306,13 +314,14 @@ def export_anim(file):
                 c.add_position_keyframe()
                 c.add_rotation_keyframe()
                 c.add_rigblock_keyframe()
+                c.channel_info_flags.append(c.channel.keyframe_info_flags)
 
     for channel_output in channels_output:
         text += f"{channel_header(channel_output.channel)}\n"
 
         text += "\tinfo\n"
-        text += "".join(info_keyframe_to_string(t, channel_output.events, event_names)
-                        for t in channel_output.channel_times)
+        text += "".join(info_keyframe_to_string(t, channel_output.events, event_names, info_flags)
+                        for t, info_flags in zip(channel_output.channel_times, channel_output.channel_info_flags))
         text += "\tend\n"
 
         text += "\tpos"
@@ -338,9 +347,6 @@ def export_anim(file):
 
     scene.frame_set(current_frame)
 
-    # The anim editor in SMFX detects when the file changes, but writing all the text
-    # using file.write updates the file multiple times
-    # We want to write it all in one call
     file.write(text)
 
     return {'FINISHED'}

@@ -377,6 +377,13 @@ class SporeAnimBoneProperties(bpy.types.PropertyGroup):
         options=set()
     )
 
+    keyframe_info_flags: IntProperty(
+        name="Keyframe Info Flags",
+        description="Flags specific to each keyframe, applied to the 'info' component of the channel",
+        default=0,
+        min=0
+    )
+
     position_weight: FloatProperty(
         name="Position Weight",
         default=1.0,
@@ -585,6 +592,10 @@ class SPORE_PT_anim_bone_extra(SporeAnimBonePanel, bpy.types.Panel):
         col.prop(item, 'secondary_flags')
         col.prop(item, 'bind_flags')
         col.prop(item, 'movement_flags')
+
+        col = self.layout.column()
+        col.use_property_decorate = True
+        col.prop(item, 'keyframe_info_flags')
 
 
 class SPORE_PT_anim_bone_deforms(SporeAnimBonePanel, bpy.types.Panel):
