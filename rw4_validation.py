@@ -70,12 +70,18 @@ def error_action_but_no_armature(action):
     return f"Action {action.name} does not use shape keys, but the armature does not exist either."
 
 
+def error_action_but_no_object(action):
+    return f"Action {action.name} uses shape keys, but is not assigned to any object; it will not be exported."
+
+
 def error_no_bone_for_vertex_group(v_group):
     return f"There is a vertex group called {v_group.name}, but no bone exists with that name."
 
 
 def error_action_with_missing_shapes(action, shape_name):
     return f"Action {action.name} uses shape key {shape_name}, but not shape exists with that name."
+
+
 
 
 def validate_armatures(layout):

@@ -161,6 +161,9 @@ class RW4Exporter:
 
         self.b_armature_object = None
         self.b_mesh_objects = []
+        # Used to separate collections, maps each armature action to its armature
+        self.b_armature_actions = {}
+        self.b_shape_keys_actions = {}
 
         self.bones_skin = {}  # Maps name to skin
         self.skin_matrix_buffer = None
@@ -1101,10 +1104,26 @@ class RW4Exporter:
 
             is_shape_key = action.id_root == 'KEY'
 
-            if not is_shape_key and self.b_armature_object is None:
-                error = rw4_validation.error_action_but_no_armature(action)
-                if error not in self.warnings:
-                    self.warnings.add(error)
+            if not is_shape_key:
+                # If there is no armature using the action (and it's not shape key) then throw error
+                if action not in self.b_armature_actions:
+                    error = rw4_validation.error_action_but_no_armature(action)
+                    if error not in self.warnings:
+                        self.warnings.add(error)
+                        continue
+
+                # If the animation belongs to another armature, then it's in another collection and we can ignore it
+                if self.b_armature_actions[action] != self.b_armature_object:
+                    continue
+            else:
+                if action not in self.b_shape_keys_actions:
+                    error = rw4_validation.error_action_but_no_object(action)
+                    if error not in self.warnings:
+                        self.warnings.add(error)
+                        continue
+
+                # If the animation does not use any of our meshes, then it's in another collection and we can ignore it
+                if self.b_shape_keys_actions[action] not in self.b_mesh_objects:
                     continue
 
             skeleton_id = self.blend_shape.id if is_shape_key else file_io.get_hash(self.b_armature_object.name)
@@ -1200,12 +1219,36 @@ def export_rw4(file):
 
     exporter = RW4Exporter()
 
-    # First process and export the skeleton (if any)
+    active_collection = bpy.context.view_layer.active_layer_collection.collection
+    if active_collection is None:
+        active_collection = bpy.context.scene.collection
+
+    # For collections, we need to know what each action animates
     for obj in bpy.context.scene.objects:
+        if obj.type == 'ARMATURE':
+            ad = obj.animation_data
+            if ad:
+                if ad.action:
+                    exporter.b_armature_actions[ad.action] = obj
+                for t in ad.nla_tracks:
+                    for s in t.strips:
+                        exporter.b_armature_actions[s.action] = obj
+        if obj.type == 'MESH':
+            if obj.data.shape_keys and obj.data.shape_keys.animation_data:
+                ad = obj.data.shape_keys.animation_data
+                if ad.action:
+                    exporter.b_shape_keys_actions[ad.action] = obj
+                for t in ad.nla_tracks:
+                    for s in t.strips:
+                        exporter.b_shape_keys_actions[s.action] = obj
+
+    print(active_collection.all_objects)
+    # First process and export the skeleton (if any)
+    for obj in active_collection.all_objects:
         if obj.type == 'ARMATURE':
             exporter.export_armature_object(obj)
 
-    for obj in bpy.context.scene.objects:
+    for obj in active_collection.all_objects:
         if obj.type == 'MESH':
             exporter.export_mesh_object(obj)
 
