@@ -79,7 +79,7 @@ def error_no_bone_for_vertex_group(v_group):
 
 
 def error_action_with_missing_shapes(action, shape_name):
-    return f"Action {action.name} uses shape key {shape_name}, but not shape exists with that name."
+    return f"Action {action.name} uses shape key {shape_name}, but no shape key exists with that name."
 
 
 

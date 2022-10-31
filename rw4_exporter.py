@@ -944,56 +944,66 @@ class RW4Exporter:
         :param action: The Blender action to export.
         :param keyframe_anim: The keyframe anim where the data will be written.
         """
-        shape_ids = set(i for i in self.blend_shape.shape_ids)
-
+        shape_ids = self.blend_shape.shape_ids
+        
+        # Even though the RW anim channel has a shape ID field, Spore only seems to care about the order
+        # So first collect the fcurves, then add shape key channels in order
+        fcurves_by_id = {}
+        
         # Shape keys don't use groups
         for fcurve in action.fcurves:
-            # Ensure keyframes are sorted in chronological order and handles are set correctly
-            fcurve.update()
-
-            channel = rw4_base.AnimationChannel()
-            channel.keyframe_class = rw4_base.BlendFactorKeyframe
-            keyframe_anim.channels.append(channel)
-
             match = re.search(r'\["([a-zA-Z_\-\s0-9.]+)"\]', fcurve.data_path)
-            channel.channel_id = file_io.get_hash(match.group(1))
-
-            if channel.channel_id not in shape_ids:
+            channel_id = file_io.get_hash(match.group(1))
+            
+            if channel_id not in shape_ids:
                 error = rw4_validation.error_action_with_missing_shapes(action, match.group(1))
                 if error not in self.warnings:
                     self.warnings.add(error)
                 continue
+            
+            fcurves_by_id[channel_id] = fcurve
+            
+        for channel_id in shape_ids:
+            if channel_id in fcurves_by_id:
+                fcurve = fcurves_by_id[channel_id]
+                # Ensure keyframes are sorted in chronological order and handles are set correctly
+                fcurve.update()
+                
+                channel = rw4_base.AnimationChannel()
+                channel.keyframe_class = rw4_base.BlendFactorKeyframe
+                channel.channel_id = channel_id
+                keyframe_anim.channels.append(channel)
+                
+                for i, b_keyframe in enumerate(fcurve.keyframe_points):
+                    time = b_keyframe.co[0] / rw4_base.KeyframeAnim.FPS
+                    value = fcurve.evaluate(b_keyframe.co[0])
 
-            shape_ids.remove(channel.channel_id)
+                    if i == 0 and time != 0.0:
+                        # Ensure the first keyframe is at 0.0, just in case
+                        # It will have the same value as this one
+                        keyframe = channel.new_keyframe(0.0)
+                        keyframe.factor = value
 
-            for i, b_keyframe in enumerate(fcurve.keyframe_points):
-                time = b_keyframe.co[0] / rw4_base.KeyframeAnim.FPS
-                value = fcurve.evaluate(b_keyframe.co[0])
-
-                if i == 0 and time != 0.0:
-                    # Ensure the first keyframe is at 0.0, just in case
-                    # It will have the same value as this one
-                    keyframe = channel.new_keyframe(0.0)
+                    keyframe = channel.new_keyframe(time)
                     keyframe.factor = value
 
-                keyframe = channel.new_keyframe(time)
-                keyframe.factor = value
+                    if i == len(fcurve.keyframe_points)-1 and time != keyframe_anim.length:
+                        # Ensure the last keyframe is at 'length', just in case
+                        # It will have the same value as this one
+                        keyframe = channel.new_keyframe(keyframe_anim.length)
+                        keyframe.factor = value
+                    
+            else:
+                # We still need a channel for it
+                channel = rw4_base.AnimationChannel()
+                channel.keyframe_class = rw4_base.BlendFactorKeyframe
+                channel.channel_id = channel_id
+                keyframe_anim.channels.append(channel)
 
-                if i == len(fcurve.keyframe_points)-1 and time != keyframe_anim.length:
-                    # Ensure the last keyframe is at 'length', just in case
-                    # It will have the same value as this one
-                    keyframe = channel.new_keyframe(keyframe_anim.length)
-                    keyframe.factor = value
+                #TODO maybe they should use the real weight instead of 0.0
+                channel.new_keyframe(0.0).factor = 0.0
+                channel.new_keyframe(keyframe_anim.length).factor = 0.0
 
-        # Add the remaining ones
-        for shape_id in shape_ids:
-            channel = rw4_base.AnimationChannel()
-            channel.keyframe_class = rw4_base.BlendFactorKeyframe
-            channel.channel_id = shape_id
-            keyframe_anim.channels.append(channel)
-
-            channel.new_keyframe(0.0).factor = 0.0
-            channel.new_keyframe(keyframe_anim.length).factor = 0.0
 
     def process_skeleton_action(self, action, keyframe_anim):
         # 1. Get all possible keyframe times
@@ -1242,7 +1252,6 @@ def export_rw4(file):
                     for s in t.strips:
                         exporter.b_shape_keys_actions[s.action] = obj
 
-    print(active_collection.all_objects)
     # First process and export the skeleton (if any)
     for obj in active_collection.all_objects:
         if obj.type == 'ARMATURE':
