@@ -15,17 +15,38 @@ class ZZModAPIShaderMaterial(RWMaterial):
     material_has_material_color = True
     material_has_ambient_color = False
 
+    shader_name: StringProperty(
+        name="Shader Name",
+        description="The name or hex code of the shader to be used.",
+        default="",
+    )
+    
     diffuse_texture: StringProperty(
         name="Diffuse Texture",
         description="The diffuse texture of this material (leave empty if no texture desired)",
         default="",
         subtype='FILE_PATH'
     )
-
-    shader_name: StringProperty(
-        name="Shader Name",
-        description="The name or hex code of the shader to be used.",
+    
+    texture_slot_1: StringProperty(
+        name="Texture Slot 1",
+        description="Texture slot 1",
         default="",
+        subtype='FILE_PATH'
+    )
+    
+    texture_slot_2: StringProperty(
+        name="Texture Slot 2",
+        description="Texture slot 2",
+        default="",
+        subtype='FILE_PATH'
+    )
+    
+    texture_slot_3: StringProperty(
+        name="Texture Slot 3",
+        description="Texture slot 3",
+        default="",
+        subtype='FILE_PATH'
     )
 
     @staticmethod
@@ -45,6 +66,9 @@ class ZZModAPIShaderMaterial(RWMaterial):
 
         layout.prop(data, 'shader_name')
         layout.prop(data, 'diffuse_texture')
+        layout.prop(data, 'texture_slot_1')
+        layout.prop(data, 'texture_slot_2')
+        layout.prop(data, 'texture_slot_3')
 
     @staticmethod
     def get_material_builder(exporter, rw4_material):
@@ -75,9 +99,17 @@ class ZZModAPIShaderMaterial(RWMaterial):
             sampler_index=0,
             texture_raster=exporter.add_texture(material_data.diffuse_texture)
         ))
-
+        
+        last_slot_index = 0
+        for i, slot in enumerate([material_data.texture_slot_1, material_data.texture_slot_2, material_data.texture_slot_3]):
+            if slot:
+                material.texture_slots.append(RWTextureSlot(
+                    sampler_index=i,
+                    texture_raster=exporter.add_texture(slot)
+                ))
+                
         material.texture_slots.append(RWTextureSlot(
-            sampler_index=1,
+            sampler_index=last_slot_index+1,
             texture_raster=None
         ))
 
