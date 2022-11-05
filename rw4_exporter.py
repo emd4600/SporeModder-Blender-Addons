@@ -282,6 +282,7 @@ class RW4Exporter:
         :param b_vertex: The Blender vertex.
         :param vertex_dict: A dictionary of vertex attributes lists.
         :param base255: If True, weights will be converted to 0-255 integer range
+        :returns: False if there was an error with the bones and exporting must stop
         """
         indices = [0, 0, 0, 0]
         # Special case: if there are no bone weights, we must do this or the model will be invisible
@@ -294,9 +295,15 @@ class RW4Exporter:
                 error = rw4_validation.error_no_bone_for_vertex_group(v_group)
                 if error not in self.warnings:
                     self.warnings.add(error)
-                    continue
+                continue
                 
             index = bone_query[0]
+            
+            if index * 3 > 255:
+                error = rw4_validation.error_too_many_bones(self.b_armature_object)
+                if error not in self.warnings:
+                    self.warnings.add(error)
+                break
 
             if i == 4:
                 error = rw4_validation.error_vertex_bone_limit(obj)
@@ -327,6 +334,7 @@ class RW4Exporter:
                 error = rw4_validation.error_not_normalized(obj)
                 if error not in self.warnings:
                     self.warnings.add(error)
+                    return False
         else:
             epsilon = 0.002
             if total_weight > 1.0 + epsilon or total_weight < 1.0 - epsilon:
@@ -336,6 +344,7 @@ class RW4Exporter:
 
         vertex_dict['blendIndices'].append(indices)
         vertex_dict['blendWeights'].append(weights)
+        return True
 
     def process_mesh(self, obj, mesh, use_texcoord, use_bones, base255):
         """
@@ -381,7 +390,8 @@ class RW4Exporter:
                 positions.append(Vector((b_vertex.co[0], b_vertex.co[1], b_vertex.co[2])))
                 normals.append(Vector((b_vertex.normal[0], b_vertex.normal[1], b_vertex.normal[2])))
                 if use_bones:
-                    self.process_vertex_bones(obj, b_vertex, vertices, base255)
+                    if not self.process_vertex_bones(obj, b_vertex, vertices, base255):
+                        return None, None, None
 
                 indices_map.append(i)
 
@@ -418,7 +428,8 @@ class RW4Exporter:
                         texcoords.append(Vector((uv_data[i].uv[0], -uv_data[i].uv[1])))
 
                         if use_bones:
-                            self.process_vertex_bones(obj, b_vertex, vertices, base255)
+                            if not self.process_vertex_bones(obj, b_vertex, vertices, base255):
+                                return None, None, None
 
                         indices_map.append(index)
                         triangles[t][i - face.loop_start] = current_processed_index
@@ -736,6 +747,10 @@ class RW4Exporter:
 
         vertices, triangles, indices_map = self.process_mesh(
             obj, blender_mesh, use_texcoord, use_bones, not use_shape_keys)
+        
+        if vertices is None:
+            # There was a critical error, stop exporting
+            return
 
         # When it's only for exporting we must remove it
         obj.to_mesh_clear()
@@ -1120,7 +1135,7 @@ class RW4Exporter:
                     error = rw4_validation.error_action_but_no_armature(action)
                     if error not in self.warnings:
                         self.warnings.add(error)
-                        continue
+                    continue
 
                 # If the animation belongs to another armature, then it's in another collection and we can ignore it
                 if self.b_armature_actions[action] != self.b_armature_object:
@@ -1130,7 +1145,7 @@ class RW4Exporter:
                     error = rw4_validation.error_action_but_no_object(action)
                     if error not in self.warnings:
                         self.warnings.add(error)
-                        continue
+                    continue
 
                 # If the animation does not use any of our meshes, then it's in another collection and we can ignore it
                 if self.b_shape_keys_actions[action] not in self.b_mesh_objects:

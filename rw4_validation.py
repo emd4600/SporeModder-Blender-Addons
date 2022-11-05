@@ -10,8 +10,16 @@ def error_vertex_bone_limit(obj):
     return f"There are vertices with more than 4 bones assigned in mesh {obj.name}."
 
 
+def error_too_many_bones(obj):
+    return f"Armature {obj.name} has more than 86 bones, which is the maximum a mesh can have."
+
+
 def error_not_normalized(obj):
     return f"Mesh {obj.name} weights are not normalized."
+
+
+def error_bone_weight_limit(mesh, bone_name):
+    return f"Mesh {mesh.name} has some vertices assigned to bone {bone_name} with a weight greater than 1.0"
 
 
 def error_vertices_limit(obj):
