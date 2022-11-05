@@ -274,9 +274,11 @@ class RW4Importer:
         b_mesh.update(calc_edges=True)
 
         # Apply the normals after updating
-        if vbuffer.has_element(rw4_enums.RWDECL_NORMAL):
-            for i, v in enumerate(vertices):
-                b_mesh.vertices[i].normal = rw4_enums.unpack_normals(v.normal)
+         # In Blender 3 'normal' is read-only (and apparently it was being ignored anyways)
+        if bpy.app.version[0] == 2:
+            if vbuffer.has_element(rw4_enums.RWDECL_NORMAL):
+                for i, v in enumerate(vertices):
+                    b_mesh.vertices[i].normal = rw4_enums.unpack_normals(v.normal)
 
         # Configure skeleton if any
         if self.b_armature is not None:
@@ -551,7 +553,7 @@ class RW4Importer:
                 fcurves_vs.append(fcurve)
 
         for k, kf in enumerate(channel.keyframes):
-            time = kf.time * rw4_base.KeyframeAnim.FPS
+            time = int(round(kf.time * rw4_base.KeyframeAnim.FPS))
             bpy.context.scene.frame_set(time)  # So that parent.matrix works
 
             transform = channel_keyframes[index][k]
