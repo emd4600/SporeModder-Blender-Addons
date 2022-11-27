@@ -23,7 +23,7 @@ def requirements_to_string(item):
 def event_source_to_string(source):
     s = source.type
 
-    s += context_query_to_string(source, "query")
+    s += context_query_to_string(source, "query", False)
 
     # (variable_name, text, default)
     attributes = (
@@ -46,7 +46,7 @@ def event_source_to_string(source):
     return s
 
 
-def context_query_to_string(item, prefix):
+def context_query_to_string(item, prefix, is_secondary):
     attributes = (
         ("_selectX", "selectX", 'all'),
         ("_selectY", "selectY", 'all'),
@@ -56,9 +56,16 @@ def context_query_to_string(item, prefix):
     )
     s = ""
 
-    data = getattr(item, prefix + "_capability")
-    if data != 'all':
-        s += f" {data}"
+    write_capability = True
+    if is_secondary:
+        if item.secondary_type == "ExternalTarget":
+            s += f" {item.secondary_target_index}"
+            write_capability = False
+            
+    if write_capability:
+        data = getattr(item, prefix + "_capability")
+        if data != 'all':
+            s += f" {data}"
 
     for attr in attributes:
         data = getattr(item, prefix + attr[0])
@@ -145,10 +152,16 @@ def event_to_string(internal_name, event):
 def channel_header(channel):
     text = f"channel \"{channel.name}\""
 
-    text += context_query_to_string(channel, "primary")
+    text += context_query_to_string(channel, "primary", False)
 
     if channel.ground_relative:
         text += " -groundRelative"
+        
+    if channel.secondary_directional_only:
+        text += " -secondaryDirectionalOnly"
+        
+    if channel.secondary_lookat:
+        text += " -rotRelativeExtTarg"
 
     text += f" -blendGroup {channel.blend_group}"
 
@@ -164,6 +177,12 @@ def channel_header(channel):
     if channel.movement_flags != 0:
         text += f" -movementFlags {channel.movement_flags}"
 
+    return text
+
+
+def secondary_command(channel):
+    text = f"secondary "
+    text += context_query_to_string(channel, "secondary", True)
     return text
 
 
@@ -318,6 +337,9 @@ def export_anim(file):
 
     for channel_output in channels_output:
         text += f"{channel_header(channel_output.channel)}\n"
+        
+        if channel_output.channel.secondary_type != "none":
+            text += f"\t{secondary_command(channel_output.channel)}\n"
 
         text += "\tinfo\n"
         text += "".join(info_keyframe_to_string(t, channel_output.events, event_names, info_flags)
