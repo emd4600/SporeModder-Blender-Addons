@@ -92,6 +92,7 @@ class RWHeader:
                   0, 0, 0,
                   self.p_buffer_data)
 
+        #TODO actually, 4 bytes before this, there are 4 instances of RWBaseResourceDescriptor (size, alignment) pairs
         file.pack('<ii', 16, buffers_size)
         file.pack('<iiiii', 4, 0, 1, 0, 1)
         file.pack('<i', 0)  # 0x00C00758 ?
@@ -273,8 +274,9 @@ class RenderWare4:
         self.header.section_sub_references.p_sub_reference_offsets = file.tell()
         file.write(bytearray(len(self.header.section_sub_references.sub_references) * 8))
 
-        # Apparently this is necessary?
-        file.write(bytearray(48))
+        # Extra space needed by the Subreferences on runtime
+        # Before we always wrote 48, so just in case we set that as a minimum (it's probably superfluous, but harmless)
+        file.write(bytearray(max(48, len(self.header.section_sub_references.sub_references) * 0x18)))
 
         # Now write the BaseResources
         self.header.p_buffer_data = file.tell()
@@ -348,6 +350,20 @@ class RWObject:
 
     def write(self, file: FileWriter):
         pass
+    
+    
+class RWBaseResourceDescriptor:
+    def __init__(self):
+        self.size = 0
+        self.alignment = 0
+
+    def read(self, file: FileReader):
+        self.size = file.read_int()
+        self.alignment = file.read_int()
+
+    def write(self, file: FileWriter):
+        file.write_int(self.size)
+        file.write_int(self.alignment)
 
 
 class SectionManifest(RWObject):
