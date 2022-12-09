@@ -1,4 +1,5 @@
 import bpy
+import mathutils
 from . import anim_bone_config
 
 
@@ -201,18 +202,38 @@ def info_keyframe_to_string(t, events, event_names, info_flags):
     return text
 
 
-def get_position(armature_matrix, channel, bone):
+def get_position(armature_matrix, channel, bone, secondary_reference_bone):
     bone_pos = armature_matrix @ bone.head
+    rest_pos = armature_matrix @ bone.bone.head_local
+    basis_matrix = mathutils.Matrix.Identity(3)
+    
+    if secondary_reference_bone is not None:
+        # Build a change of basis matrix for the secondary coordinate system
+        # X is direction towards secondary, Y is same as secondary Y, Z is perpendicular to both
+        secondary_pos = armature_matrix @ secondary_reference_bone.head
+        #secondary_bone_matrix = armature_matrix @ secondary_reference_bone.matrix
+        secondary_X = secondary_pos - rest_pos
+        #secondary_Y = secondary_bone_matrix @ mathutils.Vector((0, 1, 0))
+        secondary_Y = secondary_reference_bone.y_axis
+        secondary_Z = secondary_X.cross(secondary_Y)
+        basis_matrix = mathutils.Matrix([secondary_X, secondary_Y, secondary_Z]).transposed()
+        print("Basis matrix")
+        print(basis_matrix)
+        basis_matrix = basis_matrix.inverted(mathutils.Matrix.Identity(3))
+        print("Basis matrix inverted")
+        print(basis_matrix)
+        
     pos = bone_pos
     if channel.relative_pos:
-        rest_pos = armature_matrix @ bone.bone.head_local
         pos = bone_pos - rest_pos
 
         if channel.ground_relative:
             old_range = 0.0 - rest_pos.z
             pos.z = (bone_pos.z - rest_pos.z) / old_range
+            
+    #TODO what role does relative_pos pay in the secondary?
 
-    return pos
+    return basis_matrix @ pos
 
 
 def get_rotation(armature_matrix, channel, bone):
@@ -235,6 +256,7 @@ class AnimChannelOutput:
         self.position_text = ""
         self.rotation_text = ""
         self.rigblocks_text = {name: "" for name in rigblock_names}
+        self.secondary_reference_bone = self.get_secondary_reference_bone()
 
     def has_time(self, t):
         return t in self.channel_times
@@ -246,9 +268,19 @@ class AnimChannelOutput:
             if v[1] != 1.0:
                 text += f" {v[1]}"
             self.rigblocks_text[anim_name] += text + "\n"
+            
+    def get_secondary_reference_bone(self):
+        bone_name = self.channel.secondary_reference_bone
+        if self.channel.secondary_type != 'none' and bone_name:
+            bone_query = [b for b in self.armature_object.pose.bones if b.name == bone_name]
+            if not bone_query:
+                show_message_box(f"Error in {self.bone.name} secondary reference bone: Bone named '{bone_name}' does not exist", "Error")
+                return None
+            return bone_query[0]
+        return None
 
     def add_position_keyframe(self):
-        pos = get_position(self.armature_object.matrix_world, self.channel, self.bone)
+        pos = get_position(self.armature_object.matrix_world, self.channel, self.bone, self.secondary_reference_bone)
         text = f"\t\t({pos.x}, {pos.y}, {pos.z})"
         if self.channel.position_weight != 1.0:
             text += f" {self.channel.position_weight}"

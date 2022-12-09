@@ -251,6 +251,11 @@ class SporeAnimBoneProperties(bpy.types.PropertyGroup):
         default='none',
         options=set()
     )
+    secondary_reference_bone: StringProperty(
+        name="Reference Bone",
+        description="Used only to correctly export the movement, the channel will be exported as if the secondary was at the given bone position/rotation",
+        options=set()
+    )
     secondary_target_index: IntProperty(
         name="Target Index",
         options=set()
@@ -531,6 +536,7 @@ class SPORE_PT_anim_bone_secondary(SporeAnimBonePanel, bpy.types.Panel):
         col = self.layout.column()
         col.prop(item, 'secondary_type')
         if item.secondary_type != 'none':
+            col.prop_search(item, 'secondary_reference_bone', context.armature, 'bones')
             if item.secondary_type == 'ExternalTarget':
                 col.prop(item, 'secondary_target_index')
             else:
