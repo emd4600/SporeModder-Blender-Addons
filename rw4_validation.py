@@ -67,7 +67,11 @@ def error_texture_does_not_exist(path):
 
 
 def error_texture_error(path):
-    return f"Error reading texture '{path}'"
+    return f"Error reading texture '{path}'. Ensure it is a DDS texture."
+
+
+def error_texture_not_dds(path):
+    return f"Only DDS textures are supported, '{path}' does not have a .dds extension."
 
 
 def error_modifiers(obj):

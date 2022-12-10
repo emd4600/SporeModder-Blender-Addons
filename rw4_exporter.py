@@ -235,8 +235,12 @@ class RW4Exporter:
         raster = rw4_base.Raster(self.render_ware)
         data_buffer = rw4_base.BaseResource(self.render_ware)
         use_emtpy_texture = True
-
-        if path:
+        
+        if not path.endswith(".dds"):
+            error = rw4_validation.error_texture_not_dds(path)
+            if error not in self.warnings:
+                self.warnings.add(error)     
+        elif path:
             try:
                 with open(bpy.path.abspath(path), 'rb') as file:
                     dds_texture = rw4_base.DDSTexture()
@@ -246,12 +250,12 @@ class RW4Exporter:
                     data_buffer.data = dds_texture.data
                     use_emtpy_texture = False
 
-            except FileNotFoundError as e:
+            except FileNotFoundError as _:
                 error = rw4_validation.error_texture_does_not_exist(path)
                 if error not in self.warnings:
                     self.warnings.add(error)
 
-            except OSError as e:
+            except BaseException as _:
                 error = rw4_validation.error_texture_error(path)
                 if error not in self.warnings:
                     self.warnings.add(error)
