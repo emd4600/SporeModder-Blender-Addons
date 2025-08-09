@@ -104,17 +104,19 @@ DEFAULT_HANDLE_POSITIONS = {
     'DeformAxisRightFront': (default_deform_axis, ['+X', '-Y']),
     'DeformAxisLeftFront': (default_deform_axis, ['-X', '-Y']),
     # TODO What's the difference between front and forward?
-    'DeformAxisFront': (default_deform_axis, ['-Y ']),
+    'DeformAxisFront': (default_deform_axis, ['-Y']),
     'DeformAxisForward': (default_deform_axis, ['-Y']),
     'DeformAxisBack': (default_deform_axis, ['+Y']),
     'DeformAxisRight': (default_deform_axis, ['+X']),
     'DeformAxisLeft': (default_deform_axis, ['-X']),
     'DeformAxisUp': (default_deform_axis, ['+Z']),
-    'DeformBoneBaseJoint': (default_deform_axis, ['-Y ']),
-    'DeformBoneEndJoint': (default_deform_axis, ['-Y ']),
-    'DeformBoneMiddle': (default_deform_axis, ['-Y ']),
-    'BoneLength': (default_deform_axis, ['-Y ']),
-    'Nudge': (default_deform_axis, ['+Z ']),
+    'DeformAxisDown': (default_deform_axis, ['-Z']),
+    'DeformBoneBaseJoint': (default_deform_axis, ['+Z']),
+    'DeformBoneEndJoint': (default_deform_axis, ['+Z']),
+    'DeformBoneMiddle': (default_deform_axis, ['+Z']),
+    'DeformBoneLength': (default_deform_axis, ['-Y']),
+    'BoneLength': (default_deform_axis, ['-Y']),
+    'Nudge': (default_deform_axis, ['-Y']),
 }
 
 
