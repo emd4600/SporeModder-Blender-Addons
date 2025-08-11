@@ -162,6 +162,21 @@ class ExportAnim(bpy.types.Operator, ExportHelper):
             return export_anim(file)
 
 
+class ImportMuscleGroup(bpy.types.Operator, ImportHelper):
+    bl_idname = "import_my_format.muscle_group"
+    bl_label = "Import Muscle Group (.prop.prop_t)"
+    bl_description = "Import a muscle group or muscle file as Blender curves"
+
+    filename_ext = ".prop.prop_t"
+    filter_glob: bpy.props.StringProperty(default="*.prop.prop_t", options={'HIDDEN'})
+
+    def execute(self, context):
+        from .muscle_group_importer import import_muscle_group_or_file
+        # Use the filename (without extension) for the curve/collection name
+        curve_name = bpy.path.display_name_from_filepath(self.filepath)
+        return import_muscle_group_or_file(self.filepath)
+
+
 def gmdl_importer_menu_func(self, context):
     self.layout.operator(ImportGMDL.bl_idname, text="Spore GMDL Model (.gmdl)")
 
@@ -178,12 +193,17 @@ def anim_exporter_menu_func(self, context):
     self.layout.operator(ExportAnim.bl_idname, text="Spore Animation (.anim_t)")
 
 
+def muscle_group_importer_menu_func(self, context):
+    self.layout.operator(ImportMuscleGroup.bl_idname, text="Spore Muscle Group (.prop.prop_t)")
+
+
 classes = (
     Preferences,
     ImportGMDL,
     ImportRW4,
     ExportRW4,
-    ExportAnim
+    ExportAnim,
+    ImportMuscleGroup,
 )
 
 
@@ -201,6 +221,7 @@ def register():
 
     bpy.types.TOPBAR_MT_file_import.append(gmdl_importer_menu_func)
     bpy.types.TOPBAR_MT_file_import.append(rw4_importer_menu_func)
+    bpy.types.TOPBAR_MT_file_import.append(muscle_group_importer_menu_func)
     bpy.types.TOPBAR_MT_file_export.append(rw4_exporter_menu_func)
     bpy.types.TOPBAR_MT_file_export.append(anim_exporter_menu_func)
 
@@ -217,6 +238,7 @@ def unregister():
 
     bpy.types.TOPBAR_MT_file_import.remove(gmdl_importer_menu_func)
     bpy.types.TOPBAR_MT_file_import.remove(rw4_importer_menu_func)
+    bpy.types.TOPBAR_MT_file_import.remove(muscle_group_importer_menu_func)
     bpy.types.TOPBAR_MT_file_export.remove(rw4_exporter_menu_func)
     bpy.types.TOPBAR_MT_file_export.remove(anim_exporter_menu_func)
 
