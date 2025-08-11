@@ -665,6 +665,12 @@ class RW4Importer:
 
             bpy.ops.object.mode_set(mode='OBJECT')
 
+            # Add the action to the armature's NLA track
+            # TODO: not working?
+            #nla_tracks = self.b_armature_object.animation_data.nla_tracks
+            #track = nla_tracks.new()
+            #strip = track.strips.new(b_action.name, b_action.frame_range[0], b_action)
+
         return b_action
 
     def import_animations(self):
