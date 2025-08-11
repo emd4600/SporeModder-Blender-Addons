@@ -327,6 +327,14 @@ class SporeAnimBoneProperties(bpy.types.PropertyGroup):
         default=True,
         options=set()
     )
+    
+    flag_700: BoolProperty(
+        name="flags 0x700 (for wings)",
+        description="If checked, movement is relative to the rest position, without IK, maybe",
+        default=False,
+        options=set()
+    )
+    
     relative_rot: BoolProperty(
         name="Relative Rotation",
         description="If checked, movement is relative to the rest rotation. If not checked, the movement will use absolute coordinates, ignoring the body's rest pose (so all selected bodies end up with the same rotation)",
@@ -451,6 +459,9 @@ class SporeAnimBoneProperties(bpy.types.PropertyGroup):
     Tuck: FloatVectorProperty(name="Tuck", min=0.0, max=1.0, size=2, default=(0.0, 1.0))
     Bend: FloatVectorProperty(name="Bend", min=0.0, max=1.0, size=2, default=(0.5, 1.0))
     wing_Bend: FloatVectorProperty(name="Bend", min=0.0, max=1.0, size=2, default=(0.5, 0.0))
+    
+    LeftRight: FloatVectorProperty(name="LeftRight", min=0.0, max=1.0, size=2, default=(0.5, 1.0))
+    DownUp: FloatVectorProperty(name="DownUp", min=0.0, max=1.0, size=2, default=(0.5, 1.0))
 
 
 class SPORE_PT_anim_bone(bpy.types.Panel):
@@ -561,6 +572,7 @@ class SPORE_PT_anim_bone_remappable(SporeAnimBonePanel, bpy.types.Panel):
         col = self.layout.column()
         col.prop(item, 'scale_mode')
         col.prop(item, 'relative_pos')
+        col.prop(item, 'flag_700')
         col.prop(item, 'relative_rot')
 
         col = self.layout.column()
@@ -995,7 +1007,7 @@ class SporeAnimEventProperties(bpy.types.PropertyGroup):
 
     flags: IntProperty(
         name="Flags",
-        default=0x40,
+        default=0,
         min=0,
         options=set()
     )
@@ -1081,6 +1093,12 @@ class SporeAnimEventProperties(bpy.types.PropertyGroup):
         type=SporeAnimEventSourceProperties
     )
 
+    effect_use_local_reference: BoolProperty(
+        name="Use Local Reference Frame",
+        description="If selected, the effect rotates and scales with the source",
+        default=True,
+        options=set()
+    )
     effect_update_position: BoolProperty(
         name="Update Position",
         description="Whether the effect position is constantly updated when the source position changes",
@@ -1224,6 +1242,7 @@ class SPORE_PT_anim_event(bpy.types.Panel):
             col.separator()
 
             if item.type == 'effect':
+                col.prop(item, "effect_use_local_reference")
                 col.prop(item, "effect_update_position")
                 col.prop(item, "effect_update_rotation")
                 col.prop(item, "effect_update_scale")
