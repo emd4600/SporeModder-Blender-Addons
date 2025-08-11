@@ -214,6 +214,10 @@ class RW4Importer:
 
         # Configure skeleton if any
         if self.b_armature is not None and buffer.offsets[rw4_base.BlendShapeBuffer.INDEX_BLENDINDICES] != -1:
+            # Parent mesh to armature and rename armature object
+            b_object.parent = self.b_armature_object
+            self.b_armature_object.name = b_object.name + "-Armature"
+
             blend_indices = [-1] * vertex_count
             blend_weights = [0.0] * vertex_count
             stream.seek(buffer.offsets[rw4_base.BlendShapeBuffer.INDEX_BLENDINDICES])
@@ -243,7 +247,9 @@ class RW4Importer:
 
     def import_vertex_buffer_mesh(self, mesh_link):
         vbuffer = mesh_link.mesh.vertex_buffers[0]
-        name = "Model-%d" % (self.render_ware.get_index(vbuffer))
+        #name = "Model-%d" % (self.render_ware.get_index(vbuffer))
+        # set the imported model name to the file name
+        name = os.path.splitext(os.path.basename(self.filepath))[0]
         b_mesh = bpy.data.meshes.new(name)
         b_object = bpy.data.objects.new(name, b_mesh)
 
@@ -282,6 +288,10 @@ class RW4Importer:
 
         # Configure skeleton if any
         if self.b_armature is not None:
+            # Parent mesh to armature and rename armature object
+            b_object.parent = self.b_armature_object
+            self.b_armature_object.name = b_object.name + "-Armature"
+
             for bbone in self.b_armature.bones:
                 b_object.vertex_groups.new(name=bbone.name)
 

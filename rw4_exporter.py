@@ -1117,6 +1117,8 @@ class RW4Exporter:
         if self.b_armature_object is not None and self.b_armature_object.animation_data is not None:
             original_skeleton_action = self.b_armature_object.animation_data.action
 
+        # TODO: Allow for armatures and shape keys with the same name and length to be combined into one KeyframeAnim.
+        # Throw an error if they have the same name but different lengths.
         for action in bpy.data.actions:
             if not action.fcurves:
                 continue
@@ -1248,28 +1250,53 @@ def export_rw4(file):
 
     exporter = RW4Exporter()
 
+	# Set active collection, or fall back to scene collection if missing or empty.
     active_collection = bpy.context.view_layer.active_layer_collection.collection
-    if active_collection is None:
+    if not active_collection or active_collection is None or not active_collection.all_objects:
         active_collection = bpy.context.scene.collection
+    if not active_collection.all_objects:
+        show_message_box("No objects to export in the active collection.",
+                         title="Export Error", icon="ERROR")
+        return {'CANCELLED'}
+
+    # Detect if just one mesh and its armature are present
+    mesh_count = 0
+    for obj in bpy.context.scene.objects:
+        if obj.type == 'MESH':
+            for mod in obj.modifiers:
+                if mod.type == 'ARMATURE' and mod.object is not None:
+                    mesh_count += 1
 
     # For collections, we need to know what each action animates
-    for obj in bpy.context.scene.objects:
+    for obj in active_collection.all_objects:
         if obj.type == 'ARMATURE':
             ad = obj.animation_data
             if ad:
                 if ad.action:
                     exporter.b_armature_actions[ad.action] = obj
-                for t in ad.nla_tracks:
-                    for s in t.strips:
-                        exporter.b_armature_actions[s.action] = obj
+                # If there is only one mesh, we can assume it uses all actions.
+                if mesh_count == 1:
+                    for action in bpy.data.actions:
+                        exporter.b_armature_actions[action] = obj
+                # If there are multiple meshes, we need to check the NLA tracks
+                else:
+                    for t in ad.nla_tracks:
+                        for s in t.strips:
+                            exporter.b_armature_actions[s.action] = obj
         if obj.type == 'MESH':
             if obj.data.shape_keys and obj.data.shape_keys.animation_data:
                 ad = obj.data.shape_keys.animation_data
                 if ad.action:
                     exporter.b_shape_keys_actions[ad.action] = obj
-                for t in ad.nla_tracks:
-                    for s in t.strips:
-                        exporter.b_shape_keys_actions[s.action] = obj
+                # One mesh
+                if mesh_count == 1:
+                    for action in bpy.data.actions:
+                        exporter.b_armature_actions[action] = obj
+                # Multiple meshes, check the NLA tracks
+                else:
+                    for t in ad.nla_tracks:
+                        for s in t.strips:
+                            exporter.b_shape_keys_actions[s.action] = obj
 
     # First process and export the skeleton (if any)
     for obj in active_collection.all_objects:
