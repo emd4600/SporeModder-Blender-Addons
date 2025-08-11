@@ -13,7 +13,7 @@ from bpy.props import (StringProperty,
 
 class StaticModel(RWMaterial):
     material_name = "Static Model"
-    material_description = "A simple model which allows normal maps, used for props, backgrounds, etc."
+    material_description = "A simple static model which allows normal maps, used for props, backgrounds, etc."
     material_has_material_color = True
     material_has_ambient_color = False
     material_use_alpha = True
