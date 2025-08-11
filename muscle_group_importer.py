@@ -10,7 +10,7 @@ def show_message_box(message, title="Import Error", icon='ERROR'):
     bpy.context.window_manager.popup_menu(draw, title=title, icon=icon)
 
 
-# MuscleGroup = set of positions, percentages, and radii
+# MuscleGroup = set of position, percentage, and radii data
 def parse_muscle_group(filepath):
     mode = None
     offsets = []
@@ -19,20 +19,20 @@ def parse_muscle_group(filepath):
     with open(filepath, 'r') as file:
         for line in file:
             line = line.strip()
-            if line.startswith('vector3s muscleOffsets'):
+            if line.lower().startswith('vector3s muscleoffsets'):
                 mode = 'offsets'
                 continue
-            elif line.startswith('floats musclePercentages'):
+            elif line.lower().startswith('floats musclepercentages'):
                 mode = 'percentages'
                 continue
-            elif line.startswith('floats muscleRadii'):
+            elif line.lower().startswith('floats muscleradii'):
                 mode = 'radii'
                 continue
             elif line == 'end':
                 mode = None
                 continue
 
-            # Act based on the current mode
+            # Act on the current mode
             if mode == 'offsets' and line.startswith('('):
                 vals = line.strip('()').split(',')
                 offsets.append(Vector([float(v) for v in vals]))
@@ -44,9 +44,10 @@ def parse_muscle_group(filepath):
     return offsets, percentages, radii
 
 
-def import_muscle_group(filepath, curve_name):
+def import_muscle_group(filepath, curve_name, filepath_max=None):
     """
-        Muscle groups are imported as polygon paths (curves)
+    Muscle groups are imported as polygon paths (curves).
+    If filepath_max is provided, creates a shape key "max" that moves/scales the points to match max data.
     """
     offsets, percentages, radii = parse_muscle_group(filepath)
     n = len(offsets)
@@ -75,14 +76,34 @@ def import_muscle_group(filepath, curve_name):
     bpy.context.scene.collection.objects.link(curve_obj)
     bpy.context.view_layer.objects.active = curve_obj
 
+    # If max file provided, create shape key "max"
+    if filepath_max is not None:
+        offsets_max, percentages_max, radii_max = parse_muscle_group(filepath_max)
+        if len(offsets_max) != n or len(percentages_max) != n or len(radii_max) != n:
+            show_message_box("Max muscle group does not match base group length, continuing without morphs.", "Import Error")
+            return {'FINISHED'}
+
+        # Add basis shape key if not present
+        if not curve_obj.data.shape_keys:
+            curve_obj.shape_key_add(name="Basis")
+        # Add max shape key
+        max_key = curve_obj.shape_key_add(name="max")
+        # Move points in shape key
+        for i in range(n):
+            pos_max = Vector((offsets_max[i][0], -percentages_max[i], offsets_max[i][2]))
+            max_key.data[i].co = (pos_max.x, pos_max.y, pos_max.z)
+            max_key.data[i].radius = radii_max[i]
+
     return {'FINISHED'}
 
 
+#----------------------------------------------------------------------------------------------
 
-# Muscle = collection of muscle groups
+
+# Muscle = collection of muscle group prop files
 def parse_muscle_file(filepath):
     """
-        Parse a Muscle file and return a list of muscle group file paths.
+    Parse a Muscle file and return a list of muscle group file paths.
     """
     mode = None
     muscle_groups = []
@@ -90,10 +111,10 @@ def parse_muscle_file(filepath):
     with open(filepath, 'r') as file:
         for line in file:
             line = line.strip()
-            if line.startswith('keys muscleGroups'):
+            if line.lower().startswith('keys musclegroups'):
                 mode = 'groups'
                 continue
-            elif line == 'end':
+            elif line.lower() == 'end':
                 mode = None
                 continue
         
@@ -110,26 +131,47 @@ def parse_muscle_file(filepath):
 
 def import_muscle_file(filepath):
     """
-        Import a Muscle file containing multiple muscle groups.
+    Import a Muscle file containing multiple muscle groups.
+
+    Supports limited importing of min/max variants.
+    TODO: generate a min/max action that slides between basis and max shapes for easy previewing.
     """
-    muscle_groups = parse_muscle_file(filepath)
+
+    # Check for possible min/max variant of muscle file
+    parent_dir = os.path.dirname(filepath)
+    muscle_groups = []
+    muscle_groups_max = []
+    minmax = find_min_max_variant(parent_dir, os.path.basename(filepath).split('.')[0])
+
+    if len(minmax) == 2:
+        muscle_groups= parse_muscle_file(os.path.join(parent_dir, minmax[0] + '.prop.prop_t'))
+        muscle_groups_max = parse_muscle_file(os.path.join(parent_dir, minmax[1] + '.prop.prop_t'))
+    else:
+        muscle_groups = parse_muscle_file(filepath)
+
+
     if not muscle_groups:
         show_message_box("No muscleGroups found in file.", "Import Error")
         return {'CANCELLED'}
 
     # Create new collection for this muscle file
-    collection_name = os.path.splitext(os.path.basename(filepath))[0]
+    collection_name = os.path.basename(filepath).split('.')[0]
     collection = bpy.data.collections.new(collection_name)
     bpy.context.scene.collection.children.link(collection)
 
     imported_objs = []
+    idx = 0
     for group_path in muscle_groups:
         if not os.path.exists(group_path):
             show_message_box(f"Muscle group file not found:\n{group_path}", "Import Error")
             continue
         # Use group file name for curve name
-        curve_name = os.path.splitext(os.path.basename(group_path))[0]
-        result = import_muscle_group(group_path, curve_name)
+        curve_name = os.path.basename(group_path).split('.')[0]
+        # Import the muscle group with or without a max variant
+        if len(minmax) == 2:
+            result = import_muscle_group(group_path, curve_name, muscle_groups_max[idx])
+        else:
+            result = import_muscle_group(group_path, curve_name)
         # Get the last created object (the curve)
         curve_obj = bpy.context.view_layer.objects.active
         if curve_obj is not None:
@@ -137,6 +179,7 @@ def import_muscle_file(filepath):
             collection.objects.link(curve_obj)
             bpy.context.scene.collection.objects.unlink(curve_obj)
             imported_objs.append(curve_obj)
+        idx += 1
 
     if not imported_objs:
         show_message_box("No muscle groups imported.", "Import Error")
@@ -144,16 +187,22 @@ def import_muscle_file(filepath):
 
     # Set active object to first imported curve
     bpy.context.view_layer.objects.active = imported_objs[0]
+
+    # Generate MinMax action for all curves in the collection
+    generate_minmax_action(collection)
+
     return {'FINISHED'}
+
+#----------------------------------------------------------------------------------------------
 
 # TODO: automatically detect min and max muscle files,
 # and import min as the base and max as a shape key set.
 def import_muscle_group_or_file(filepath):
     """
-        Import either a muscle file or a muscle group file.
+    Import either a muscle file or a muscle group file.
 
-        Importing a muscle file will create a collection of muscle groups,
-        importing a muscle group file will create a single curve object.
+    Importing a muscle file will create a collection of muscle groups,
+    importing a muscle group file will create a single curve object.
     """
     # If file contains 'keys muscleGroups', import as a muscle file
     with open(filepath, 'r') as file:
@@ -161,4 +210,99 @@ def import_muscle_group_or_file(filepath):
             if line.strip().startswith('keys muscleGroups'):
                 return import_muscle_file(filepath)
     # Otherwise, import as singular muscle group
-    return import_muscle_group(filepath, os.path.splitext(os.path.basename(filepath))[0])
+    return import_muscle_group(filepath, os.path.basename(filepath).split('.')[0])
+
+
+# Insane muscle parsing func
+# Takes a muscle directory and filename (no extension) and finds min/max variants
+# Maxis uses an insane naming convention for muscle groups so it needs to work with that.
+# this asshole fucked me over after 
+def find_min_max_variant(directory, filename):
+    """
+    Given a filename and its directory, returns [min_name, max_name] if both exist,
+    or [original_name] if only one exists. Names returned sans extension.
+    """
+    # Suffix pairs
+    pairs = [
+        (("Min", "a", "", ""), ("Max", "b", "E", "_extent"))
+    ]
+    # Determine base name and suffix
+    base = filename
+    min_suffix = None
+    max_suffix = None
+
+    # Check which suffix is present
+    for min_s, max_s in zip(pairs[0][0], pairs[0][1]):
+        if filename.endswith(min_s) and min_s != "":
+            base = filename[:-len(min_s)]
+            min_suffix = min_s
+            max_suffix = max_s
+            break
+        elif filename.endswith(max_s):
+            base = filename[:-len(max_s)]
+            min_suffix = pairs[0][0][pairs[0][1].index(max_s)]
+            max_suffix = max_s
+            break
+    else:
+        # No suffix, treat as min with ""
+        min_suffix = ""
+        # 2 possible Max suffixes from here, check for both.
+        max_suffix = "E"
+
+        max_path = os.path.join(directory, base + max_suffix + ".prop.prop_t")
+        if not os.path.exists(max_path):
+            max_suffix = "_extent" 
+
+    # Compose possible filenames
+    min_name = base + min_suffix
+    max_name = base + max_suffix
+
+    # Check which files exist
+    min_path = os.path.join(directory, min_name + ".prop.prop_t")
+    max_path = os.path.join(directory, max_name + ".prop.prop_t")
+
+    min_exists = os.path.exists(min_path)
+    max_exists = os.path.exists(max_path)
+
+    if min_exists and max_exists:
+        return [min_name, max_name]
+    elif min_exists:
+        return [min_name]
+    elif max_exists:
+        return [max_name]
+    else:
+        # Only original filename exists (maybe with a different suffix)
+        orig_path = os.path.join(directory, filename + ".prop.prop_t")
+        print(orig_path)
+        if os.path.exists(orig_path):
+            return [filename]
+        return []
+
+
+def generate_minmax_action(collection):
+    """
+    Generates or updates an action named 'MinMax' that animates all curve objects in the collection,
+    morphing their 'max' shape key from 0 (frame 0) to 1 (frame 30).
+    """
+    action_name = "MinMax"
+    action = bpy.data.actions.get(action_name)
+    if not action:
+        action = bpy.data.actions.new(action_name)
+        action.use_fake_user = True
+
+    for obj in collection.objects:
+        if obj.type == 'CURVE' and obj.data.shape_keys:
+            key_block = obj.data.shape_keys.key_blocks.get("max")
+            if key_block:
+                # Ensure animation data exists
+                if not obj.data.shape_keys.animation_data:
+                    obj.data.shape_keys.animation_data_create()
+                obj.data.shape_keys.animation_data.action = action
+
+                data_path = key_block.path_from_id("value")
+                fcurve = action.fcurves.find(data_path)
+                if not fcurve:
+                    fcurve = action.fcurves.new(data_path)
+                # Insert keyframes for value 0 at frame 0 and value 1 at frame 30
+                fcurve.keyframe_points.insert(0, 0)
+                fcurve.keyframe_points.insert(30, 1)

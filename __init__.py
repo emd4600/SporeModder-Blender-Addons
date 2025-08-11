@@ -163,9 +163,9 @@ class ExportAnim(bpy.types.Operator, ExportHelper):
 
 
 class ImportMuscleGroup(bpy.types.Operator, ImportHelper):
-    bl_idname = "import_my_format.muscle_group"
-    bl_label = "Import Muscle Group (.prop.prop_t)"
-    bl_description = "Import a muscle group or muscle file as Blender curves"
+    bl_idname = "import_my_format.muscle"
+    bl_label = "Import Limb Muscle (.prop.prop_t)"
+    bl_description = "Import a muscle file or muscle group as Blender curves"
 
     filename_ext = ".prop.prop_t"
     filter_glob: bpy.props.StringProperty(default="*.prop.prop_t", options={'HIDDEN'})
@@ -174,6 +174,10 @@ class ImportMuscleGroup(bpy.types.Operator, ImportHelper):
         from .muscle_group_importer import import_muscle_group_or_file
         # Use the filename (without extension) for the curve/collection name
         curve_name = bpy.path.display_name_from_filepath(self.filepath)
+        import os
+        filename = os.path.basename(self.filepath)
+        if filename.lower().startswith("group_"):
+            self.report({'WARNING'}, "Imported Muscle 'Group_' files do not support automatic morphs, consider importing the 'Muscle_' file instead.")
         return import_muscle_group_or_file(self.filepath)
 
 
@@ -194,7 +198,7 @@ def anim_exporter_menu_func(self, context):
 
 
 def muscle_group_importer_menu_func(self, context):
-    self.layout.operator(ImportMuscleGroup.bl_idname, text="Spore Muscle Group (.prop.prop_t)")
+    self.layout.operator(ImportMuscleGroup.bl_idname, text="Spore Limb Muscle (.prop.prop_t)")
 
 
 classes = (
