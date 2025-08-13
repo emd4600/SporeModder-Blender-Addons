@@ -1242,7 +1242,7 @@ class RW4Exporter:
         self.render_ware.add_object(kdtree)
 
 
-def export_rw4(file):
+def export_rw4(file, export_symmetric):
     # NOTE: We might not use Spore's conventional ordering of RW objects, since it's a lot easier to do it this way.
     # Theoretically, this has no effect on the game so it should work fine.
 

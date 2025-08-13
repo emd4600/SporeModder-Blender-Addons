@@ -142,11 +142,23 @@ class ExportRW4(bpy.types.Operator, ExportHelper):
 	filename_ext = ".rw4"
 	filter_glob: bpy.props.StringProperty(default="*.rw4", options={'HIDDEN'})
 
+	# Checkbox to export a mirrored version
+	# This will export an additional -symmetric copy of the model
+	export_symmetric: bpy.props.BoolProperty(
+		name="Export Symmetric Variant",
+		description="Export an additional mirrored mesh with -symmetric suffix",
+		default=False
+	)
+
 	def execute(self, context):
 		from .rw4_exporter import export_rw4
 
 		with open(self.filepath, 'bw') as file:
 			return export_rw4(file)
+	
+	def draw(self, context):
+		layout = self.layout
+		layout.prop(self, "export_symmetric")
 
 
 class ExportAnim(bpy.types.Operator, ExportHelper):
@@ -193,7 +205,7 @@ class ExportMuscle(bpy.types.Operator, ExportHelper):
 	# This will export an additional -symmetric copy of the muscle and group files
 	export_symmetric: bpy.props.BoolProperty(
 		name="Export Symmetric Variant",
-		description="Also export a mirrored version with -symmetric suffix",
+		description="Export an additional mirrored limb set with -symmetric suffix",
 		default=False
 	)
 
