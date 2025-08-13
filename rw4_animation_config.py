@@ -170,6 +170,14 @@ def get_default_handle_position(name):
 	bpy.context.scene.frame_set(current_keyframe)
 	return initial_pos, final_pos
 
+# Get the currently active collection, or the scene collection if none is active
+def get_current_collection():
+	collection = bpy.context.view_layer.active_layer_collection.collection
+	if collection:
+		return collection
+	else:
+		return bpy.context.scene.collection
+
 
 def morph_handle_update(self, context):
 	if self.is_morph_handle:
@@ -337,20 +345,99 @@ class SPORE_OT_auto_handles(bpy.types.Operator):
 class SPORE_OT_generate_morph_nudge(bpy.types.Operator):
 	bl_idname = "action.auto_morph_nudge"
 	bl_label = "Generate Nudge Morph"
-	bl_description = "Generates an action and morph handle for nudging the model, based on the current action"
+	bl_description = "Generates an action and morph for nudging the model (Square Handle)"
 
 	@classmethod
 	def poll(cls, context):
-		action = bpy.data.actions[context.scene.rw4_list_index]
-		return action.name in DEFAULT_HANDLE_POSITIONS
+		# Return True if there is at least one armature in the scene
+		# and there is NOT already an action called "Nudge"
+		has_armature = any(obj.type == 'ARMATURE' for obj in bpy.context.scene.objects)
+		has_nudge_action = any(action.name == "Nudge" for action in bpy.data.actions)
+		return has_armature and not has_nudge_action
 
 	def execute(self, context):
-		action = bpy.data.actions[context.scene.rw4_list_index]
+		# Find the actively selected armature
+		armature_obj = None
+		if context.active_object and context.active_object.type == 'ARMATURE':
+			armature_obj = context.active_object
+		else:
+			# Fallback: first armature in current collection, or scene collection
+			collection = get_current_collection()
+			armatures = [obj for obj in collection.objects if obj.type == 'ARMATURE']
+			if not armatures:
+				# Fallback to scene collection
+				armatures = [obj for obj in context.scene.collection.objects if obj.type == 'ARMATURE']
+			if armatures:
+				armature_obj = armatures[0]
+
+		if not armature_obj:
+			self.report({'ERROR'}, "No armature found.")
+			return {'CANCELLED'}
+
+		# Store the root bone of the armature for later use
+		root_bone = None
+		if armature_obj.data.bones:
+			# Root bone = first parentless bone
+			for bone in armature_obj.data.bones:
+				if bone.parent is None or bone.name.lower() == "root":
+					root_bone = bone
+					break
+
+		if not root_bone:
+			self.report({'ERROR'}, "No root bone found.")
+			return {'CANCELLED'}
+		
+		#-----------------------------------------------------
+		# Begin creating nudge armature action
+
+		MOVE_DISTANCE = 0.1
+
+		action = bpy.data.actions.new(name="Nudge")
+		if not armature_obj.animation_data:
+			armature_obj.animation_data_create()
+		armature_obj.animation_data.action = action
+
+		# Insert keyframes for root bone pose location
+		bpy.context.view_layer.objects.active = armature_obj
+		bpy.ops.object.mode_set(mode='POSE')
+		pose_bone = armature_obj.pose.bones.get(root_bone.name)
+		if not pose_bone:
+			self.report({'ERROR'}, "Root pose bone not found.")
+			bpy.ops.object.mode_set(mode='OBJECT')
+			return {'CANCELLED'}
+
+		# Frame 0: +Y
+		bpy.context.scene.frame_set(0)
+		pose_bone.location = (0.0, MOVE_DISTANCE, 0.0)
+		pose_bone.keyframe_insert(data_path="location", frame=0)
+
+		# Frame 30: -Y
+		bpy.context.scene.frame_set(30)
+		pose_bone.location = (0.0, -MOVE_DISTANCE, 0.0)
+		pose_bone.keyframe_insert(data_path="location", frame=30)
+
+		# Set interpolation to linear for all location keyframes of the root bone
+		action_fcurves = [fc for fc in action.fcurves if fc.data_path == f'pose.bones["{root_bone.name}"].location']
+		for fc in action_fcurves:
+			for kp in fc.keyframe_points:
+				kp.interpolation = 'LINEAR'
+
+		bpy.ops.object.mode_set(mode='OBJECT')
+		armature_obj.animation_data.action = None
+
+		#-----------------------------------------------------
+		# Turn the action into a morph and generate auto handles
+		action.rw4.is_morph_handle = True
+		action.rw4.default_progress = 0.5
 		result = get_default_handle_position(action.name)
 		if result is not None:
 			action.rw4.initial_pos, action.rw4.final_pos = result
+
 		return {'FINISHED'}
 
+
+
+# Animations panel
 class SPORE_PT_rw_anims(bpy.types.Panel):
 	bl_label = "RenderWare4 Animations"
 	bl_space_type = 'PROPERTIES'
@@ -366,6 +453,11 @@ class SPORE_PT_rw_anims(bpy.types.Panel):
 			item = bpy.data.actions[context.scene.rw4_list_index].rw4
 			self.layout.prop(item, 'is_morph_handle')
 
+			has_armature = any(obj.type == 'ARMATURE' for obj in bpy.context.scene.objects)
+			has_nudge_action = any(action.name == "Nudge" for action in bpy.data.actions)
+			if has_armature and not has_nudge_action:
+				self.layout.operator("action.auto_morph_nudge", text="Generate Nudge Morph")
+
 			if item.is_morph_handle:
 				self.layout.operator("action.auto_rw_handle", text="Automatic Positions")
 				self.layout.prop(item, 'initial_pos')
@@ -375,6 +467,7 @@ class SPORE_PT_rw_anims(bpy.types.Panel):
 
 def register():
 	bpy.utils.register_class(SPORE_OT_auto_handles)
+	bpy.utils.register_class(SPORE_OT_generate_morph_nudge)
 	bpy.utils.register_class(SPORE_UL_rw_anims)
 	bpy.utils.register_class(RW4AnimProperties)
 	bpy.utils.register_class(SPORE_PT_rw_anims)
@@ -390,5 +483,6 @@ def unregister():
 	bpy.utils.unregister_class(RW4AnimProperties)
 	bpy.utils.unregister_class(SPORE_UL_rw_anims)
 	bpy.utils.unregister_class(SPORE_OT_auto_handles)
+	bpy.utils.unregister_class(SPORE_OT_generate_morph_nudge)
 
 	del bpy.types.Scene.rw4_list_index
