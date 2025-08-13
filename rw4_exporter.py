@@ -150,8 +150,8 @@ class ExporterBone:
         self.translation = translation
         self.parent = parent
 
-
 class RW4Exporter:
+
     def __init__(self):
         self.render_ware = rw4_base.RenderWare4()
 
@@ -1274,9 +1274,11 @@ def export_rw4(file):
             if ad:
                 if ad.action:
                     exporter.b_armature_actions[ad.action] = obj
-                # If there is only one mesh, we can assume it uses all actions.
+                # If there is only one mesh, we can assume it uses all actions except those marked null
                 if mesh_count == 1:
                     for action in bpy.data.actions:
+                        if exporter.b_armature_actions[action].name.lower().startswith("null"):
+                            continue
                         exporter.b_armature_actions[action] = obj
                 # If there are multiple meshes, we need to check the NLA tracks
                 else:
@@ -1288,7 +1290,7 @@ def export_rw4(file):
                 ad = obj.data.shape_keys.animation_data
                 if ad.action:
                     exporter.b_shape_keys_actions[ad.action] = obj
-                # One mesh
+                # One mesh, pull actions
                 if mesh_count == 1:
                     for action in bpy.data.actions:
                         exporter.b_armature_actions[action] = obj
@@ -1296,6 +1298,8 @@ def export_rw4(file):
                 else:
                     for t in ad.nla_tracks:
                         for s in t.strips:
+                            if exporter.b_armature_actions[action].name.lower().startswith("null"):
+                                continue
                             exporter.b_shape_keys_actions[s.action] = obj
 
     # First process and export the skeleton (if any)

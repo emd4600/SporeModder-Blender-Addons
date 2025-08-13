@@ -1,8 +1,10 @@
 __author__ = 'Allison'
 
 import bpy
-from mathutils import Vector
 import os
+import re
+from mathutils import Matrix, Vector
+
 
 def show_message_box(message, title="Import Error", icon='ERROR'):
     def draw(self, context):
@@ -55,20 +57,41 @@ def import_muscle_group(filepath, curve_name, filepath_max=None):
         show_message_box("muscleOffsets, musclePercentages, and muscleRadii must have the same length.", "Import Error")
         return {'CANCELLED'}
 
+    # Remove suffixes from curve name if max file provided
+    if filepath_max is not None:
+        # Match last _<number> at end
+        match = re.search(r'_(\d+)$', curve_name)
+        suffix = ''
+        base_name = curve_name
+        if match:
+            suffix = match.group(0)  # e.g. '_12'
+            base_name = curve_name[:match.start()]
+        # Check for hardcoded suffixes and remove them
+        if base_name.endswith('Min'):
+            base_name = base_name[:-3]
+        else:
+            # Check for number+'a' at end (e.g. '12a')
+            num_a_match = re.search(r'(\d+)a$', base_name)
+            if num_a_match:
+                base_name = base_name[:num_a_match.start()]
+        curve_name = base_name + suffix
+
     curve_data = bpy.data.curves.new(curve_name, type='CURVE')
     curve_data.dimensions = '3D'
     curve_data.fill_mode = 'FULL'
     curve_data.use_fill_caps = True
+
+    curve_data.bevel_mode = 'ROUND'
     curve_data.bevel_depth = 1.0
     curve_data.bevel_resolution = 2
-    curve_data.bevel_mode = 'ROUND'
+    curve_data.resolution_u = 6
 
     spline = curve_data.splines.new(type='POLY')
     spline.points.add(n-1)
     for i in range(n):
         # place points along -Y axis, offset by muscleOffsets
         pos = Vector((offsets[i][0], -percentages[i], offsets[i][2]))
-        spline.points[i].co = (pos.x, pos.y, pos.z, 1)
+        spline.points[i].co = (pos.x, pos.y, -pos.z, 1)
         spline.points[i].radius = radii[i]
 
     # create curve from data
@@ -122,9 +145,10 @@ def parse_muscle_file(filepath):
             if mode == 'groups' and line:
                 # Create full path to muscle group file
                 fname = line.split('!')[1].split('.')[0]  # filename without extension
-                folder = line.split('!')[0]
-                parent_dir = os.path.dirname(base_dir)
-                group_path = os.path.join(parent_dir, folder, fname + '.prop.prop_t')
+                #folder = line.split('!')[0]
+                #parent_dir = os.path.dirname(base_dir)
+                #group_path = os.path.join(parent_dir, folder, fname + '.prop.prop_t')
+                group_path = os.path.join(base_dir, fname + '.prop.prop_t')
                 muscle_groups.append(group_path)
     return muscle_groups
 
@@ -143,7 +167,7 @@ def import_muscle_file(filepath):
     muscle_groups_max = []
     minmax = find_min_max_variant(parent_dir, os.path.basename(filepath).split('.')[0])
 
-    if len(minmax) == 2:
+    if len(minmax) == 3:
         muscle_groups= parse_muscle_file(os.path.join(parent_dir, minmax[0] + '.prop.prop_t'))
         muscle_groups_max = parse_muscle_file(os.path.join(parent_dir, minmax[1] + '.prop.prop_t'))
     else:
@@ -156,6 +180,8 @@ def import_muscle_file(filepath):
 
     # Create new collection for this muscle file
     collection_name = os.path.basename(filepath).split('.')[0]
+    if len(minmax) == 3:
+        collection_name = minmax[2]
     collection = bpy.data.collections.new(collection_name)
     bpy.context.scene.collection.children.link(collection)
 
@@ -168,7 +194,7 @@ def import_muscle_file(filepath):
         # Use group file name for curve name
         curve_name = os.path.basename(group_path).split('.')[0]
         # Import the muscle group with or without a max variant
-        if len(minmax) == 2:
+        if len(minmax) == 3:
             result = import_muscle_group(group_path, curve_name, muscle_groups_max[idx])
         else:
             result = import_muscle_group(group_path, curve_name)
@@ -188,8 +214,9 @@ def import_muscle_file(filepath):
     # Set active object to first imported curve
     bpy.context.view_layer.objects.active = imported_objs[0]
 
-    # Generate MinMax action for all curves in the collection
-    generate_minmax_action(collection)
+    if len(minmax) == 3:
+        # Generate MinMax action for all curves in the collection
+        generate_minmax_action(collection)
 
     return {'FINISHED'}
 
@@ -219,12 +246,12 @@ def import_muscle_group_or_file(filepath):
 # this asshole fucked me over after 
 def find_min_max_variant(directory, filename):
     """
-    Given a filename and its directory, returns [min_name, max_name] if both exist,
+    Given a filename and its directory, returns [min_name, max_name, base_name] if both min/max exist,
     or [original_name] if only one exists. Names returned sans extension.
     """
     # Suffix pairs
     pairs = [
-        (("Min", "a", "", ""), ("Max", "b", "E", "_extent"))
+        (("-Min", "Min", "a", "", ""), ("-Max", "Max", "b", "E", "_extent"))
     ]
     # Determine base name and suffix
     base = filename
@@ -265,11 +292,11 @@ def find_min_max_variant(directory, filename):
     max_exists = os.path.exists(max_path)
 
     if min_exists and max_exists:
-        return [min_name, max_name]
+        return [min_name, max_name, base]
     elif min_exists:
-        return [min_name]
+        return [min_name, base]
     elif max_exists:
-        return [max_name]
+        return [max_name, base]
     else:
         # Only original filename exists (maybe with a different suffix)
         orig_path = os.path.join(directory, filename + ".prop.prop_t")
