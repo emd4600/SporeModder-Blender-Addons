@@ -154,7 +154,7 @@ class ExportRW4(bpy.types.Operator, ExportHelper):
 		from .rw4_exporter import export_rw4
 
 		with open(self.filepath, 'bw') as file:
-			return export_rw4(file)
+			return export_rw4(file, export_symmetric)
 	
 	def draw(self, context):
 		layout = self.layout
