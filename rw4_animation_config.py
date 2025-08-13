@@ -407,12 +407,10 @@ class SPORE_OT_generate_morph_nudge(bpy.types.Operator):
 			return {'CANCELLED'}
 
 		# Frame 0: +Y
-		bpy.context.scene.frame_set(0)
 		pose_bone.location = (0.0, MOVE_DISTANCE, 0.0)
 		pose_bone.keyframe_insert(data_path="location", frame=0)
 
 		# Frame 30: -Y
-		bpy.context.scene.frame_set(30)
 		pose_bone.location = (0.0, -MOVE_DISTANCE, 0.0)
 		pose_bone.keyframe_insert(data_path="location", frame=30)
 
