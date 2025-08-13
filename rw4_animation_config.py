@@ -391,6 +391,7 @@ class SPORE_OT_generate_morph_nudge(bpy.types.Operator):
 		# Begin creating nudge armature action
 
 		MOVE_DISTANCE = 0.1
+		current_frame = bpy.context.scene.frame_current
 
 		action = bpy.data.actions.new(name="Nudge")
 		if not armature_obj.animation_data:
@@ -406,13 +407,21 @@ class SPORE_OT_generate_morph_nudge(bpy.types.Operator):
 			bpy.ops.object.mode_set(mode='OBJECT')
 			return {'CANCELLED'}
 
+		# Deselect all pose bones
+		for pb in armature_obj.pose.bones:
+			pb.bone.select = False
+		# Select only the root bone
+		pose_bone.bone.select = True
+
 		# Frame 0: +Y
+		bpy.context.scene.frame_set(0)
 		pose_bone.location = (0.0, MOVE_DISTANCE, 0.0)
-		pose_bone.keyframe_insert(data_path="location", frame=0)
+		bpy.ops.anim.keyframe_insert_menu(type='Location')
 
 		# Frame 30: -Y
+		bpy.context.scene.frame_set(30)
 		pose_bone.location = (0.0, -MOVE_DISTANCE, 0.0)
-		pose_bone.keyframe_insert(data_path="location", frame=30)
+		bpy.ops.anim.keyframe_insert_menu(type='Location')
 
 		# Set interpolation to linear for all location keyframes of the root bone
 		action_fcurves = [fc for fc in action.fcurves if fc.data_path == f'pose.bones["{root_bone.name}"].location']
@@ -431,6 +440,9 @@ class SPORE_OT_generate_morph_nudge(bpy.types.Operator):
 		result = get_default_handle_position(action.name)
 		if result is not None:
 			action.rw4.initial_pos, action.rw4.final_pos = result
+
+		# restore frame
+		bpy.context.scene.frame_set(current_frame)
 
 		return {'FINISHED'}
 
