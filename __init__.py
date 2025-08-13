@@ -152,7 +152,7 @@ class ExportRW4(bpy.types.Operator, ExportHelper):
 	# Export with morphs omitted
 	export_as_lod1: bpy.props.BoolProperty(
 		name="Export as LOD1",
-		description="Export selected models for LOD1, with morphs omitted.",
+		description="Export selected models with morphs omitted, for LOD1 usage",
 		default=False
 	)
 
@@ -160,7 +160,7 @@ class ExportRW4(bpy.types.Operator, ExportHelper):
 		from .rw4_exporter import export_rw4
 
 		with open(self.filepath, 'bw') as file:
-			return export_rw4(file, self.export_symmetric) #self.export_as_lod1
+			return export_rw4(file, self.export_symmetric, self.export_as_lod1)
 
 	def draw(self, context):
 		layout = self.layout

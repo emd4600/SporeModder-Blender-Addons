@@ -1109,7 +1109,7 @@ class RW4Exporter:
 		#     for i in range(3):
 		#         print(f"skin_bones_data += struct.pack('ffff', {dst_r[i][0]}, {dst_r[i][1]}, {dst_r[i][2]}, {dst_t[i]})")
 
-	def export_actions(self):
+	def export_actions(self, use_morphs = True):
 
 		animations_list = rw4_base.Animations(self.render_ware)
 
@@ -1175,14 +1175,15 @@ class RW4Exporter:
 
 			# Now, either add to animations list or to handles
 			if action.rw4 is not None and action.rw4.is_morph_handle:
-				handle = rw4_base.MorphHandle(self.render_ware)
-				handle.handle_id = file_io.get_hash(action_name)
-				handle.start_pos = action.rw4.initial_pos
-				handle.end_pos = action.rw4.final_pos
-				handle.default_progress = action.rw4.default_progress / 100.0
-				handle.animation = keyframe_anim
+				if use_morphs: # If not using morphs (LOD1), skip this
+					handle = rw4_base.MorphHandle(self.render_ware)
+					handle.handle_id = file_io.get_hash(action_name)
+					handle.start_pos = action.rw4.initial_pos
+					handle.end_pos = action.rw4.final_pos
+					handle.default_progress = action.rw4.default_progress / 100.0
+					handle.animation = keyframe_anim
 
-				self.render_ware.add_object(handle)
+					self.render_ware.add_object(handle)
 
 			else:
 				animations_list.add(file_io.get_hash(action_name), keyframe_anim)
@@ -1245,7 +1246,7 @@ class RW4Exporter:
 		self.render_ware.add_object(kdtree)
 
 
-def export_rw4(file, export_symmetric): #export_as_lod1
+def export_rw4(file, export_symmetric, export_as_lod1):
 	# NOTE: We might not use Spore's conventional ordering of RW objects, since it's a lot easier to do it this way.
 	# Theoretically, this has no effect on the game so it should work fine.
 
@@ -1317,12 +1318,12 @@ def export_rw4(file, export_symmetric): #export_as_lod1
 
 	exporter.export_bbox()
 	exporter.export_kdtree()
-	exporter.export_actions()
+	exporter.export_actions(use_morphs = not export_as_lod1)
 	exporter.render_ware.write(file_io.FileWriter(file))
 
 	# Export symmetric variant of this model and these actions
 	if export_symmetric:
-		export_rw4_symmetric(file, active_collection, exporter.b_armature_actions, exporter.b_shape_keys_actions)
+		export_rw4_symmetric(file, active_collection, exporter.b_armature_actions, exporter.b_shape_keys_actions, export_as_lod1)
 
 	# Reset frame
 	bpy.context.scene.frame_set(current_keyframe)
@@ -1335,7 +1336,7 @@ def export_rw4(file, export_symmetric): #export_as_lod1
 
 
 
-def export_rw4_symmetric(file, active_collection, armature_actions, shape_keys_actions):
+def export_rw4_symmetric(file, active_collection, armature_actions, shape_keys_actions, export_as_lod1):
 	# Mirrors the active collection's meshes and armatures across X axis,
 	# flips face normals, and mirrors armature action bone keyframes
 
@@ -1483,7 +1484,7 @@ def export_rw4_symmetric(file, active_collection, armature_actions, shape_keys_a
 		exporter_sym.export_mesh_object(mesh)
 	exporter_sym.export_bbox()
 	exporter_sym.export_kdtree()
-	exporter_sym.export_actions()
+	exporter_sym.export_actions(use_morphs = not export_as_lod1)
 
 	# Write symmetric model to file (append -symmetric)
 	sym_file_path = None
