@@ -429,6 +429,7 @@ class SPORE_OT_generate_morph_nudge(bpy.types.Operator):
 		# Turn the action into a morph and generate auto handles
 		action.rw4.is_morph_handle = True
 		action.rw4.default_progress = 0.5
+		action.use_fake_user = True
 		result = get_default_handle_position(action.name)
 		if result is not None:
 			action.rw4.initial_pos, action.rw4.final_pos = result
