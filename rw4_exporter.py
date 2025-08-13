@@ -1170,10 +1170,13 @@ class RW4Exporter:
 				self.b_armature_object.animation_data.action = action
 				self.process_skeleton_action(action, keyframe_anim)
 
+			# Remove trailing numbers from action name
+			action_name = action.name.split('.')[0]
+
 			# Now, either add to animations list or to handles
 			if action.rw4 is not None and action.rw4.is_morph_handle:
 				handle = rw4_base.MorphHandle(self.render_ware)
-				handle.handle_id = file_io.get_hash(action.name)
+				handle.handle_id = file_io.get_hash(action_name)
 				handle.start_pos = action.rw4.initial_pos
 				handle.end_pos = action.rw4.final_pos
 				handle.default_progress = action.rw4.default_progress / 100.0
@@ -1182,7 +1185,7 @@ class RW4Exporter:
 				self.render_ware.add_object(handle)
 
 			else:
-				animations_list.add(file_io.get_hash(action.name), keyframe_anim)
+				animations_list.add(file_io.get_hash(action_name), keyframe_anim)
 
 			self.render_ware.add_object(keyframe_anim)
 
@@ -1247,7 +1250,6 @@ def export_rw4(file, export_symmetric): #export_as_lod1
 	# Theoretically, this has no effect on the game so it should work fine.
 
 	current_keyframe = bpy.context.scene.frame_current
-
 	exporter = RW4Exporter()
 
 	# Set active collection, or fall back to scene collection if missing or empty.
@@ -1259,7 +1261,7 @@ def export_rw4(file, export_symmetric): #export_as_lod1
 						 title="Export Error", icon="ERROR")
 		return {'CANCELLED'}
 
-	# Detect if just one mesh and its armature are present
+	# Detect if just one mesh and its armature are present. Used for gathering actions
 	mesh_count = 0
 	for obj in bpy.context.scene.objects:
 		if obj.type == 'MESH':
@@ -1277,7 +1279,7 @@ def export_rw4(file, export_symmetric): #export_as_lod1
 				# If there is only one mesh, we can assume it uses all actions except those marked null
 				if mesh_count == 1:
 					for action in bpy.data.actions:
-						# Fix: Only check if action is in b_armature_actions before accessing
+						# Disallow null actions
 						if action in exporter.b_armature_actions and exporter.b_armature_actions[action].name.lower().startswith("null"):
 							continue
 						exporter.b_armature_actions[action] = obj
@@ -1285,9 +1287,6 @@ def export_rw4(file, export_symmetric): #export_as_lod1
 				else:
 					for t in ad.nla_tracks:
 						for s in t.strips:
-							# Fix: Only check if action is in b_armature_actions before accessing
-							if s.action in exporter.b_armature_actions and exporter.b_armature_actions[s.action].name.lower().startswith("null"):
-								continue
 							exporter.b_armature_actions[s.action] = obj
 		if obj.type == 'MESH':
 			if obj.data.shape_keys and obj.data.shape_keys.animation_data:
@@ -1297,14 +1296,14 @@ def export_rw4(file, export_symmetric): #export_as_lod1
 				# One mesh, pull actions
 				if mesh_count == 1:
 					for action in bpy.data.actions:
+						# Disallow null actions
+						if s.action in exporter.b_shape_keys_actions and exporter.b_shape_keys_actions[s.action].name.lower().startswith("null"):
+							continue
 						exporter.b_armature_actions[action] = obj
 				# Multiple meshes, check the NLA tracks
 				else:
 					for t in ad.nla_tracks:
 						for s in t.strips:
-							# Fix: Only check if action is in b_armature_actions before accessing
-							if s.action in exporter.b_armature_actions and exporter.b_armature_actions[s.action].name.lower().startswith("null"):
-								continue
 							exporter.b_shape_keys_actions[s.action] = obj
 
 	# First process and export the skeleton (if any)
@@ -1318,39 +1317,39 @@ def export_rw4(file, export_symmetric): #export_as_lod1
 
 	exporter.export_bbox()
 	exporter.export_kdtree()
-
 	exporter.export_actions()
-
 	exporter.render_ware.write(file_io.FileWriter(file))
 
-	# Export symmetric variant
+	# Export symmetric variant of this model and these actions
 	if export_symmetric:
-		export_rw4_symmetric(file, active_collection)
+		export_rw4_symmetric(file, active_collection, exporter.b_armature_actions, exporter.b_shape_keys_actions)
 
+	# Reset frame
 	bpy.context.scene.frame_set(current_keyframe)
 
 	if exporter.warnings:
-		show_multi_message_box(exporter.warnings,
-							   title=f"Exported with {len(exporter.warnings)} warnings", icon="ERROR")
+		show_multi_message_box(exporter.warnings, title=f"Exported with {len(exporter.warnings)} warnings", icon="ERROR")
 
 	return {'FINISHED'}
 
 
-def export_rw4_symmetric(file, active_collection):
-	# Mirrors the active collection's meshes and armatures across X,
-	# flips face normals, and mirrors armature action bone keyframes on X axis.
 
-	def mirror_matrix_x(mat):
-		mirror = Matrix.Scale(-1, 4, Vector((1, 0, 0)))
-		return mirror @ mat @ mirror
 
+def export_rw4_symmetric(file, active_collection, armature_actions, shape_keys_actions):
+	# Mirrors the active collection's meshes and armatures across X axis,
+	# flips face normals, and mirrors armature action bone keyframes
+
+	# Store the current selection for later restoration
+	current_selection = bpy.context.active_object
+
+	# Create and return a temporary mesh object
 	def mirror_mesh_object(obj):
 		mirrored_obj = obj.copy()
 		mirrored_obj.data = obj.data.copy()
 		mirrored_obj.name = obj.name + "_Sym"
 		mirrored_obj.parent = None
 
-		# Mirror the object by scaling -1 on X and apply transforms
+		# Scale x by -1 and apply transforms
 		mirrored_obj.scale.x *= -1
 		bpy.context.scene.collection.objects.link(mirrored_obj)
 		bpy.context.view_layer.update()
@@ -1374,10 +1373,10 @@ def export_rw4_symmetric(file, active_collection):
 		mirrored_obj.data = obj.data.copy()
 		mirrored_obj.name = obj.name + "_Sym"
 
-		# Mirror the object by scaling -1 on X and apply transforms
+		# Scale x by -1 and apply transforms
 		mirrored_obj.scale.x *= -1
 		bpy.context.scene.collection.objects.link(mirrored_obj)
-		bpy.context.view_layer.update()
+		#bpy.context.view_layer.update()
 		bpy.ops.object.select_all(action='DESELECT')
 		mirrored_obj.select_set(True)
 		bpy.context.scene.view_layers[0].objects.active = mirrored_obj
@@ -1386,28 +1385,26 @@ def export_rw4_symmetric(file, active_collection):
 
 
 	def mirror_action(action, armature_obj):
-		"""
-		Mirrors keyframes in the armature action, and only for the bones that have keyframes.
-		Uses Blender's built-in pose flipping for accuracy.
-		"""
+		# Mirrors keyframes in the armature action, and only for the bones that have keyframes.
+		# Uses Blender's built-in pose flipping for accuracy.
 
-		# Duplicate the armature
-		temp_arm = armature_obj.copy()
-		temp_arm.data = armature_obj.data.copy()
-		bpy.context.scene.collection.objects.link(temp_arm)
-		bpy.context.view_layer.update()
+		# Work on a copy of the action (action.001)
+		mirrored_action = action.copy()
+		mirrored_action.name = action.name + ".001"
 
-		# Set pose mode and assign the action
-		bpy.ops.object.select_all(action='DESELECT')
-		temp_arm.select_set(True)
-		bpy.context.view_layer.objects.active = temp_arm
+		# Assign the new action to the armature
+		if not armature_obj.animation_data:
+			armature_obj.animation_data_create()
+		armature_obj.animation_data.action = mirrored_action
+
+		# Pose mode
+		armature_obj.select_set(True)
+		bpy.context.view_layer.objects.active = armature_obj
 		bpy.ops.object.mode_set(mode='POSE')
-		temp_arm.animation_data_create()
-		temp_arm.animation_data.action = action
 
 		# Collect all keyed bones and their keyed frames
 		bone_keyframes = {}
-		for fcurve in action.fcurves:
+		for fcurve in mirrored_action.fcurves:
 			if fcurve.data_path.startswith('pose.bones'):
 				bone_name = fcurve.data_path.split('"')[1]
 				if bone_name not in bone_keyframes:
@@ -1415,7 +1412,6 @@ def export_rw4_symmetric(file, active_collection):
 				for kf in fcurve.keyframe_points:
 					bone_keyframes[bone_name].add(int(kf.co[0]))
 
-		# For each frame, mirror only the bones that have keyframes at that frame
 		all_keyed_frames = set()
 		for frames in bone_keyframes.values():
 			all_keyed_frames.update(frames)
@@ -1424,18 +1420,16 @@ def export_rw4_symmetric(file, active_collection):
 		for frame in all_keyed_frames:
 			bpy.context.scene.frame_set(frame)
 			bpy.ops.pose.select_all(action='DESELECT')
-			# Select only bones that have a keyframe at this frame
+			# Only select bones that have a keyframe at this frame
 			for bone_name, frames in bone_keyframes.items():
 				if frame in frames:
-					pb = temp_arm.pose.bones.get(bone_name)
+					pb = armature_obj.pose.bones.get(bone_name)
 					if pb:
 						pb.bone.select = True
-			# Only copy/paste if any bones are selected
-			if any(pb.bone.select for pb in temp_arm.pose.bones):
+			if any(pb.bone.select for pb in armature_obj.pose.bones):
 				bpy.ops.pose.copy()
 				bpy.ops.pose.paste(flipped=True)
-				# Insert keyframes only for selected bones
-				for pb in temp_arm.pose.bones:
+				for pb in armature_obj.pose.bones:
 					if pb.bone.select:
 						pb.keyframe_insert(data_path="location")
 						pb.keyframe_insert(data_path="rotation_quaternion")
@@ -1443,13 +1437,8 @@ def export_rw4_symmetric(file, active_collection):
 						pb.keyframe_insert(data_path="scale")
 			bpy.ops.pose.select_all(action='DESELECT')
 
-		# Create a new action for the mirrored result
-		mirrored_action = temp_arm.animation_data.action.copy()
-		mirrored_action.name = action.name
-		print(mirrored_action.name)
-
-		# Clean up
-		bpy.data.objects.remove(temp_arm, do_unlink=True)
+		# Remove the mirrored action from the armature
+		armature_obj.animation_data.action = action
 
 		return mirrored_action
 
@@ -1458,32 +1447,35 @@ def export_rw4_symmetric(file, active_collection):
 	mirrored_objs = []
 	mirrored_armatures = []
 	mirrored_actions = {}
-	shape_actions = {}
+	mirrored_shape_actions = {}
 
 	# Mirror meshes in collection
 	for obj in active_collection.all_objects:
 		if obj.type == 'MESH':
 			mirrored_mesh = mirror_mesh_object(obj)
 			mirrored_objs.append(mirrored_mesh)
+			# Pull keys
 			if obj.data.shape_keys and obj.data.shape_keys.animation_data:
-				ad = obj.data.shape_keys.animation_data
-				if ad.action:
-					shape_actions[ad.action] = mirrored_mesh
+				for item in shape_keys_actions:
+					if shape_keys_actions[item] == obj:
+						mirrored_shape_actions[item] = mirrored_mesh # no need to mirror since mesh is mirrored
 
 	# Mirror armatures in collection
 	for obj in active_collection.all_objects:
 		if obj.type == 'ARMATURE':
 			mirrored_arm = mirror_armature_object(obj)
 			mirrored_armatures.append(mirrored_arm)
-			ad = obj.animation_data
-			if ad and ad.action:
-				mirrored_act = mirror_action(ad.action, mirrored_arm)
-				mirrored_actions[mirrored_act] = mirrored_arm
+			# Mirror armature actions
+			if obj.animation_data:
+				for item in armature_actions:
+					if armature_actions[item] == obj:
+						act = mirror_action(item, mirrored_arm)
+						mirrored_actions[act] = mirrored_arm
 
 	# Start exporting
 	exporter_sym = RW4Exporter()
 	exporter_sym.b_armature_actions = mirrored_actions
-	exporter_sym.b_shape_keys_actions = shape_actions
+	exporter_sym.b_shape_keys_actions = mirrored_shape_actions
 
 	for arm in mirrored_armatures:
 		exporter_sym.export_armature_object(arm)
@@ -1493,17 +1485,36 @@ def export_rw4_symmetric(file, active_collection):
 	exporter_sym.export_kdtree()
 	exporter_sym.export_actions()
 
-	# Write symmetric model to file (append -symmetric before extension)
+	# Write symmetric model to file (append -symmetric)
 	sym_file_path = None
 	if hasattr(file, 'name'):
+		import os
 		base, ext = os.path.splitext(file.name)
 		sym_file_path = base + "-symmetric" + ext
-	else:
-		# If file is a string path, handle accordingly
-		sym_file_path = str(file) + "-symmetric"
 
 	with open(sym_file_path, 'wb') as sym_file:
 		exporter_sym.render_ware.write(file_io.FileWriter(sym_file))
 
+	# Restore the original selection
+	if current_selection and current_selection.name in bpy.data.objects:
+		bpy.context.view_layer.objects.active = bpy.data.objects[current_selection.name]
+	else:
+		bpy.context.view_layer.objects.active = None
+
+	# Remove the duplicate symmetric data
 	for obj in mirrored_objs + mirrored_armatures:
 		bpy.data.objects.remove(obj, do_unlink=True)
+	
+	for action in mirrored_actions:
+		# Unlink from all objects
+		for obj in bpy.data.objects:
+			if obj.animation_data and obj.animation_data.action == action:
+				obj.animation_data.action = None
+		# Unlink from NLA tracks
+		for obj in bpy.data.objects:
+			if obj.animation_data and obj.animation_data.nla_tracks:
+				for track in obj.animation_data.nla_tracks:
+					for strip in track.strips:
+						if strip.action == action:
+							strip.action = None
+		bpy.data.actions.remove(action, do_unlink=True)
