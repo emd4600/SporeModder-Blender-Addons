@@ -1289,6 +1289,7 @@ def export_rw4(file, export_symmetric, export_as_lod1):
 					for t in ad.nla_tracks:
 						for s in t.strips:
 							exporter.b_armature_actions[s.action] = obj
+		
 		if obj.type == 'MESH':
 			if obj.data.shape_keys and obj.data.shape_keys.animation_data:
 				ad = obj.data.shape_keys.animation_data
@@ -1298,9 +1299,9 @@ def export_rw4(file, export_symmetric, export_as_lod1):
 				if mesh_count == 1:
 					for action in bpy.data.actions:
 						# Disallow null actions
-						if s.action in exporter.b_shape_keys_actions and exporter.b_shape_keys_actions[s.action].name.lower().startswith("null"):
+						if action in exporter.b_shape_keys_actions and exporter.b_shape_keys_actions[action].name.lower().startswith("null"):
 							continue
-						exporter.b_armature_actions[action] = obj
+						exporter.b_shape_keys_actions[action] = obj
 				# Multiple meshes, check the NLA tracks
 				else:
 					for t in ad.nla_tracks:
