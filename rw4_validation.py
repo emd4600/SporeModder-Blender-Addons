@@ -73,6 +73,9 @@ def error_texture_error(path):
 def error_texture_not_dds(path):
 	return f"Only DDS textures are supported, '{path}' does not have a .dds extension."
 
+def error_texture_missing():
+	return f"One or more textures are unspecified."
+
 
 def error_modifiers(obj):
 	return f"Object {obj.name} has modifiers, please apply them if you want the changes exported."

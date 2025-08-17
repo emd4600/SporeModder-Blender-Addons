@@ -237,9 +237,12 @@ class RW4Exporter:
 		use_emtpy_texture = True
 		
 		if not path.endswith(".dds"):
-			error = rw4_validation.error_texture_not_dds(path)
-			if error not in self.warnings:
-				self.warnings.add(error)     
+			if path == "":
+				error = rw4_validation.error_texture_missing()
+			else:
+				error = rw4_validation.error_texture_not_dds(path)
+				if error not in self.warnings:
+					self.warnings.add(error)     
 		elif path:
 			try:
 				with open(bpy.path.abspath(path), 'rb') as file:
@@ -1157,7 +1160,8 @@ class RW4Exporter:
 				if self.b_shape_keys_actions[action] not in self.b_mesh_objects:
 					continue
 
-			skeleton_id = self.blend_shape.id if is_shape_key else file_io.get_hash(self.b_armature_object.name)
+			if is_shape_key and self.blend_shape is not None or self.b_armature_object is not None:
+				skeleton_id = self.blend_shape.id if is_shape_key else file_io.get_hash(self.b_armature_object.name)
 
 			keyframe_anim = rw4_base.KeyframeAnim(self.render_ware)
 			keyframe_anim.skeleton_id = skeleton_id
@@ -1249,6 +1253,13 @@ class RW4Exporter:
 split_object_meshes = {}
 def split_object(obj):
 	import bmesh
+	import bpy
+
+	editormode = bpy.context.object.mode
+	# Ensure we're in object mode before editing mesh data
+	if bpy.context.object and editormode != 'OBJECT':
+		bpy.ops.object.mode_set(mode='OBJECT')
+	
 	bm = bmesh.new()
 	bm_old = bmesh.new()
 	bm.from_mesh(obj.data)
@@ -1260,6 +1271,8 @@ def split_object(obj):
 		bm.to_mesh(obj.data)
 	bm.free()
 	split_object_meshes[obj] = bm_old
+	# Restore Mode
+	bpy.ops.object.mode_set(mode=editormode)
 
 def remerge_objects():
 	for obj in split_object_meshes.keys():
@@ -1312,7 +1325,10 @@ def export_rw4(file, export_symmetric, export_as_lod1):
 							exporter.b_armature_actions[s.action] = obj
 		
 		if obj.type == 'MESH':
-			if obj.data.shape_keys and obj.data.shape_keys.animation_data:
+			# Do not export hidden meshes
+			if obj.hide_get(): 
+				continue
+			elif obj.data.shape_keys and obj.data.shape_keys.animation_data:
 				ad = obj.data.shape_keys.animation_data
 				if ad.action:
 					exporter.b_shape_keys_actions[ad.action] = obj
@@ -1337,7 +1353,9 @@ def export_rw4(file, export_symmetric, export_as_lod1):
 
 	for obj in active_collection.all_objects:
 		if obj.type == 'MESH':
-			exporter.export_mesh_object(obj)
+			# Do not export hidden meshes
+			if not obj.hide_get():
+				exporter.export_mesh_object(obj)
 
 	exporter.export_bbox()
 	exporter.export_kdtree()
