@@ -9,7 +9,7 @@ bl_info = {
 	"blender": (2, 80, 0),
 	"version": (2, 7, 0),
 	"location": "File > Import-Export",
-	"description": "Import Spore .gmdl and .rw4 model formats. Export .rw4 and .anim_t formats.",
+	"description": "Import Spore .gmdl, .rw4, and .prop.prop_t formats. Export .rw4, .anim_t, and .prop.prop_t formats.",
 	"wiki_url": "https://github.com/emd4600/SporeModder-Blender-Addons#features",
 	"tracker_url": "https://github.com/emd4600/SporeModder-Blender-Addons/issues/new",
 	"category": "Import-Export"
@@ -51,8 +51,16 @@ class Preferences(bpy.types.AddonPreferences):
 		min=0,
 		max=59
 	)
+	mod_projects_path: bpy.props.StringProperty(
+		name="Mod Projects Path",
+		description="Path to your Sporemodder projects folder",
+		subtype='DIR_PATH',
+		default=""
+	)
 
 	def draw(self, context):
+		layout = self.layout
+		layout.prop(self, "mod_projects_path")
 		addon_updater_ops.update_settings_ui(self, context)
 
 #--------------------------------------------------------------------------
@@ -201,6 +209,7 @@ class ImportMuscle(bpy.types.Operator, ImportHelper):
 			self.report({'WARNING'}, "Imported Muscle 'Group_' files do not support automatic morphs, consider importing the 'Muscle_' file instead.")
 		return import_muscle_group_or_file(self.filepath)
 
+
 class ExportMuscle(bpy.types.Operator, ExportHelper):
 	bl_idname = "export_my_format.muscle"
 	bl_label = "Export Muscle (.prop.prop_t)"
@@ -234,6 +243,20 @@ class ExportMuscle(bpy.types.Operator, ExportHelper):
 		layout = self.layout
 		layout.prop(self, "export_symmetric")
 
+
+class ImportCityWall(bpy.types.Operator, ImportHelper):
+	bl_idname = "import_my_format.layout"
+	bl_label = "Import Citystyle Model (.prop.prop_t)"
+	bl_description = "Import a citystyles_model~ or hutstyles community layout .prop.prop_t file"
+
+	filename_ext = ".prop.prop_t"
+	filter_glob: bpy.props.StringProperty(default="*.prop.prop_t", options={'HIDDEN'})
+
+	def execute(self, context):
+		from .citywall_importer import import_citywall
+		return import_citywall(self.filepath)
+
+
 #--------------------------------------------------------------------------
 # Menu Entries
 
@@ -256,9 +279,11 @@ def anim_exporter_menu_func(self, context):
 def muscle_group_importer_menu_func(self, context):
 	self.layout.operator(ImportMuscle.bl_idname, text="Spore Limb Muscle (.prop.prop_t)")
 
-
 def muscle_group_exporter_menu_func(self, context):
 	self.layout.operator(ExportMuscle.bl_idname, text="Spore Limb Muscle (.prop.prop_t)")
+
+def citywall_importer_menu_func(self, context):
+	self.layout.operator(ImportCityWall.bl_idname, text="Spore Citystyle Model (.prop.prop_t)")
 
 
 classes = (
@@ -269,6 +294,7 @@ classes = (
 	ExportAnim,
 	ImportMuscle,
 	ExportMuscle,
+	ImportCityWall,
 )
 
 
@@ -286,10 +312,11 @@ def register():
 
 	bpy.types.TOPBAR_MT_file_import.append(gmdl_importer_menu_func)
 	bpy.types.TOPBAR_MT_file_import.append(rw4_importer_menu_func)
-	bpy.types.TOPBAR_MT_file_import.append(muscle_group_importer_menu_func)
 	bpy.types.TOPBAR_MT_file_export.append(rw4_exporter_menu_func)
 	bpy.types.TOPBAR_MT_file_export.append(anim_exporter_menu_func)
+	bpy.types.TOPBAR_MT_file_import.append(muscle_group_importer_menu_func)
 	bpy.types.TOPBAR_MT_file_export.append(muscle_group_exporter_menu_func)
+	bpy.types.TOPBAR_MT_file_import.append(citywall_importer_menu_func)
 
 
 def unregister():
@@ -304,10 +331,11 @@ def unregister():
 
 	bpy.types.TOPBAR_MT_file_import.remove(gmdl_importer_menu_func)
 	bpy.types.TOPBAR_MT_file_import.remove(rw4_importer_menu_func)
-	bpy.types.TOPBAR_MT_file_import.remove(muscle_group_importer_menu_func)
 	bpy.types.TOPBAR_MT_file_export.remove(rw4_exporter_menu_func)
 	bpy.types.TOPBAR_MT_file_export.remove(anim_exporter_menu_func)
+	bpy.types.TOPBAR_MT_file_import.remove(muscle_group_importer_menu_func)
 	bpy.types.TOPBAR_MT_file_export.remove(muscle_group_exporter_menu_func)
+	bpy.types.TOPBAR_MT_file_import.remove(citywall_importer_menu_func)
 
 
 if __name__ == "__main__":
