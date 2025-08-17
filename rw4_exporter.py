@@ -1245,6 +1245,27 @@ class RW4Exporter:
 
 		self.render_ware.add_object(kdtree)
 
+# Bit of a disgusting hack. Split the object along sharps, and store to be reset later.
+split_object_meshes = {}
+def split_object(obj):
+	import bmesh
+	bm = bmesh.new()
+	bm_old = bmesh.new()
+	bm.from_mesh(obj.data)
+	bm_old.from_mesh(obj.data)
+
+	sharp_edges = [e for e in bm.edges if not e.smooth]
+	if sharp_edges:
+		bmesh.ops.split_edges(bm, edges=sharp_edges)
+		bm.to_mesh(obj.data)
+	bm.free()
+	split_object_meshes[obj] = bm_old
+
+def remerge_objects():
+	for obj in split_object_meshes.keys():
+		split_object_meshes[obj].to_mesh(obj.data)
+	split_object_meshes.clear()
+
 
 def export_rw4(file, export_symmetric, export_as_lod1):
 	# NOTE: We might not use Spore's conventional ordering of RW objects, since it's a lot easier to do it this way.
@@ -1307,6 +1328,7 @@ def export_rw4(file, export_symmetric, export_as_lod1):
 					for t in ad.nla_tracks:
 						for s in t.strips:
 							exporter.b_shape_keys_actions[s.action] = obj
+			split_object(obj)
 
 	# First process and export the skeleton (if any)
 	for obj in active_collection.all_objects:
@@ -1328,6 +1350,8 @@ def export_rw4(file, export_symmetric, export_as_lod1):
 
 	# Reset frame
 	bpy.context.scene.frame_set(current_keyframe)
+	# Fix split meshes
+	remerge_objects()
 
 	if exporter.warnings:
 		show_multi_message_box(exporter.warnings, title=f"Exported with {len(exporter.warnings)} warnings", icon="ERROR")

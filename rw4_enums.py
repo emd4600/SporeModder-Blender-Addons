@@ -62,20 +62,20 @@ D3DDECLTYPE_FLOTA16_2 = 15
 D3DDECLTYPE_FLOAT16_4 = 16
 
 D3DDECLTYPE_FORMATS = [
-    '<f',  # float1
-    '<ff',  # float2
-    '<fff',  # float3
-    '<ffff',  # float4
-    '<I',  # D3DCOLOR
-    '<BBBB',  # ubyte4
-    '<hh',  # short2
-    '<hhhh',  # short4
-    '<BBBB',  # ubyte4n
-    '<hh',  # short2n
-    '<hhhh',  # short4n
-    '<HH',  # ushort2n
-    '<HHHH',  # ushort4n
-    # last four are not supported
+	'<f',  # float1
+	'<ff',  # float2
+	'<fff',  # float3
+	'<ffff',  # float4
+	'<I',  # D3DCOLOR
+	'<BBBB',  # ubyte4
+	'<hh',  # short2
+	'<hhhh',  # short4
+	'<BBBB',  # ubyte4n
+	'<hh',  # short2n
+	'<hhhh',  # short4n
+	'<HH',  # ushort2n
+	'<HHHH',  # ushort4n
+	# last four are not supported
 ]
 
 # D3DDECLMETHOD
@@ -139,7 +139,7 @@ D3DUSAGE_RESTRICT_SHARED_RESOURCE_DRIVER = 0x00001000
 
 
 def make_four_cc(arg):
-    return (ord(arg[3]) << 24) | (ord(arg[2]) << 16) | (ord(arg[1]) << 8) | ord(arg[0])
+	return (ord(arg[3]) << 24) | (ord(arg[2]) << 16) | (ord(arg[1]) << 8) | ord(arg[0])
 
 
 # D3DFORMAT
@@ -528,24 +528,24 @@ RWDECL_BLENDINDICES2 = 22
 RWDECL_BLENDWEIGHTS2 = 23
 
 RWDECLUSAGE_NAMES = {
-    RWDECL_POSITION: "position",
-    RWDECL_NORMAL: "normal",
-    RWDECL_COLOR0: "color0",
-    RWDECL_COLOR1: "color1",
-    RWDECL_TEXCOORD0: "texcoord0",
-    RWDECL_TEXCOORD1: "texcoord1",
-    RWDECL_TEXCOORD2: "texcoord2",
-    RWDECL_TEXCOORD3: "texcoord3",
-    RWDECL_BLENDINDICES: "blendIndices",
-    RWDECL_BLENDWEIGHTS: "blendWeights",
-    RWDECL_POINTSIZE: "pointSize",
-    RWDECL_POSITION2: "position2",
-    RWDECL_NORMAL2: "normal2",
-    RWDECL_TANGENT: "tangent",
-    RWDECL_BINORMAL: "binormal",
-    RWDECL_FOG: "fog",
-    RWDECL_BLENDINDICES2: "blendIndices2",
-    RWDECL_BLENDWEIGHTS2: "blendWeights2"
+	RWDECL_POSITION: "position",
+	RWDECL_NORMAL: "normal",
+	RWDECL_COLOR0: "color0",
+	RWDECL_COLOR1: "color1",
+	RWDECL_TEXCOORD0: "texcoord0",
+	RWDECL_TEXCOORD1: "texcoord1",
+	RWDECL_TEXCOORD2: "texcoord2",
+	RWDECL_TEXCOORD3: "texcoord3",
+	RWDECL_BLENDINDICES: "blendIndices",
+	RWDECL_BLENDWEIGHTS: "blendWeights",
+	RWDECL_POINTSIZE: "pointSize",
+	RWDECL_POSITION2: "position2",
+	RWDECL_NORMAL2: "normal2",
+	RWDECL_TANGENT: "tangent",
+	RWDECL_BINORMAL: "binormal",
+	RWDECL_FOG: "fog",
+	RWDECL_BLENDINDICES2: "blendIndices2",
+	RWDECL_BLENDWEIGHTS2: "blendWeights2"
 }
 
 # RW_TYPE_CODE
@@ -555,48 +555,48 @@ RW_SPECIAL = 0xCAFED00D
 
 
 class VertexElement:
-    def __init__(self, stream=0, offset=0, element_type=0, method=0, usage=0, usage_index=0, rw_decl=0):
-        self.stream = stream  # word
-        self.offset = offset  # word
-        self.type = element_type  # byte, D3DDECLTYPE
-        self.method = method  # byte, D3DDECLMETHOD
-        self.usage = usage  # byte, D3DDECLUSAGE
-        self.usage_index = usage_index  # byte
-        self.rw_decl = rw_decl  # RWDECLUSAGE
+	def __init__(self, stream=0, offset=0, element_type=0, method=0, usage=0, usage_index=0, rw_decl=0):
+		self.stream = stream  # word
+		self.offset = offset  # word
+		self.type = element_type  # byte, D3DDECLTYPE
+		self.method = method  # byte, D3DDECLMETHOD
+		self.usage = usage  # byte, D3DDECLUSAGE
+		self.usage_index = usage_index  # byte
+		self.rw_decl = rw_decl  # RWDECLUSAGE
 
-    def read(self, file: FileReader):
-        self.stream, self.offset, self.type, self.method, self.usage, self.usage_index, self.rw_decl = \
-            file.unpack('<hhbbbbi')
+	def read(self, file: FileReader):
+		self.stream, self.offset, self.type, self.method, self.usage, self.usage_index, self.rw_decl = \
+			file.unpack('<hhbbbbi')
 
-    def write(self, file: FileWriter):
-        file.pack('<hhbbbbi',
-                  self.stream, self.offset, self.type, self.method, self.usage, self.usage_index, self.rw_decl)
+	def write(self, file: FileWriter):
+		file.pack('<hhbbbbi',
+				  self.stream, self.offset, self.type, self.method, self.usage, self.usage_index, self.rw_decl)
 
 
 def create_rw_vertex_class(elements):
-    return namedtuple('Vertex', [RWDECLUSAGE_NAMES[e.rw_decl] for e in elements])
+	return namedtuple('Vertex', [RWDECLUSAGE_NAMES[e.rw_decl] for e in elements])
 
 
 def read_rw_vertex(elements, vertex_class, file: FileReader):
-    values = []
-    for element in elements:
-        values.append(file.unpack(D3DDECLTYPE_FORMATS[element.type]))
-    return vertex_class(*values)
+	values = []
+	for element in elements:
+		values.append(file.unpack(D3DDECLTYPE_FORMATS[element.type]))
+	return vertex_class(*values)
 
 
 def write_rw_vertex(elements, vertex, file: FileWriter):
-    for i, element in enumerate(elements):
-        file.pack(D3DDECLTYPE_FORMATS[element.type], *vertex[i])
+	for i, element in enumerate(elements):
+		file.pack(D3DDECLTYPE_FORMATS[element.type], *vertex[i])
 
 
 def unpack_normal(value):
-    return (value - 127.5) / 127.5
+	return (value - 127.5) / 127.5
 
 
 def unpack_normals(values):
-    """
-    Converts a tuple of 0-255 values into a tuple of 3 0.0-1.0 values, that can be used by Blender
-    :param values:
-    :return:
-    """
-    return unpack_normal(values[0]), unpack_normal(values[1]), unpack_normal(values[2])
+	"""
+	Converts a tuple of 0-255 values into a tuple of 3 0.0-1.0 values, that can be used by Blender
+	:param values:
+	:return:
+	"""
+	return unpack_normal(values[0]), unpack_normal(values[1]), unpack_normal(values[2])
