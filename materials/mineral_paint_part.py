@@ -131,6 +131,12 @@ TEXTURE_TRIM_REGIONS = [
 	16
 ]
 
+def sync_texture_diffuse(self, context):
+	self.fallback_texture = self.diffuse_texture
+
+def sync_texture_fallback(self, context):
+	self.diffuse_texture = self.fallback_texture
+
 def apply_uv_projection(_, __):
 	return
 	#TODO consider in future updates
@@ -198,7 +204,16 @@ class MineralPaintPart(RWMaterial):
 		name="Diffuse Texture",
 		description="The diffuse texture of this material (leave empty if no texture desired)",
 		default="",
-		subtype='FILE_PATH'
+		subtype='FILE_PATH',
+		update=sync_texture_diffuse
+	)
+
+	fallback_texture: StringProperty(
+		name="Fallback Texture",
+		description="The fallback diffuse texture of this material (optional, leave empty if no texture desired)",
+		default="",
+		subtype='FILE_PATH',
+		update=sync_texture_fallback
 	)
 
 	paint_region: IntProperty(
@@ -273,14 +288,13 @@ class MineralPaintPart(RWMaterial):
 					layout.label(text="Trim Region: Appears dark in build mode.", icon='INFO')
 				elif data.paint_region in VALID_TEXTURE_REGIONS.keys() and VALID_TEXTURE_REGIONS[data.paint_region] != "":
 					layout.label(text="Usage: " + VALID_TEXTURE_REGIONS[data.paint_region], icon='INFO')
+		
+				layout.prop(data, 'uv_projection')
 
+				layout.prop(data, 'uv_scale')
+				layout.prop(data, 'uv_offset')
 
-
-		if data.paint_mode == 'PAINT':
-			layout.prop(data, 'uv_projection')
-
-			layout.prop(data, 'uv_scale')
-			layout.prop(data, 'uv_offset')
+			layout.prop(data, 'fallback_texture')
 
 	# TODO: add support for the window shader material
 	@staticmethod
@@ -309,19 +323,20 @@ class MineralPaintPart(RWMaterial):
 		if material_data.paint_mode == 'TEXTURE':
 			diffuse_texture = material_data.diffuse_texture
 			material.add_shader_data(0x217, struct.pack('<i', 0))
-
-		elif material_data.paint_mode == 'PAINT':
-			material.add_shader_data(SHADER_DATA['uvTweak'], struct.pack(
-				'<iffff',
-				UV_PROJECTION[material_data.uv_projection],
-				material_data.uv_scale[0],
-				material_data.uv_scale[1],
-				material_data.uv_offset[0],
-				material_data.uv_offset[1],
-			))
-
 		else:
-			material.add_shader_data(0x244, struct.pack('<i', 0))
+			diffuse_texture = material_data.fallback_texture
+			if material_data.paint_mode == 'PAINT':
+				material.add_shader_data(SHADER_DATA['uvTweak'], struct.pack(
+					'<iffff',
+					UV_PROJECTION[material_data.uv_projection],
+					material_data.uv_scale[0],
+					material_data.uv_scale[1],
+					material_data.uv_offset[0],
+					material_data.uv_offset[1],
+				))
+
+			else:
+				material.add_shader_data(0x244, struct.pack('<i', 0))
 
 		if exporter.has_skeleton():
 			# In the shader, skinWeights.x = numWeights
