@@ -117,6 +117,7 @@ UV_PROJECTION = {
 VALID_TEXTURE_REGIONS = {
 	5: "Building Base Lower",
 	6: "Building Base Upper",
+	7: "",
 	9: "Roof",
 	13: "",
 	14: "Building Base Top",
