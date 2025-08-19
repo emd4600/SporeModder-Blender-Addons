@@ -1253,7 +1253,6 @@ class RW4Exporter:
 split_object_meshes = {}
 def split_object(obj):
 	import bmesh
-	import bpy
 
 	editormode = bpy.context.object.mode
 	# Ensure we're in object mode before editing mesh data
@@ -1275,9 +1274,17 @@ def split_object(obj):
 	bpy.ops.object.mode_set(mode=editormode)
 
 def remerge_objects():
+	editormode = bpy.context.object.mode
+	# Ensure we're in object mode before editing mesh data
+	if bpy.context.object and editormode != 'OBJECT':
+		bpy.ops.object.mode_set(mode='OBJECT')
+	
 	for obj in split_object_meshes.keys():
 		split_object_meshes[obj].to_mesh(obj.data)
 	split_object_meshes.clear()
+
+	# Restore Mode
+	bpy.ops.object.mode_set(mode=editormode)
 
 
 def export_rw4(file, export_symmetric, export_as_lod1):
