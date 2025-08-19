@@ -1329,8 +1329,10 @@ def export_rw4(file, export_symmetric, export_as_lod1):
 				else:
 					for t in ad.nla_tracks:
 						for s in t.strips:
-							exporter.b_armature_actions[s.action] = obj
-		
+							# Only export from active (checked) tracks
+							if t.active:
+								exporter.b_armature_actions[s.action] = obj
+
 		if obj.type == 'MESH':
 			# Do not export hidden meshes
 			if obj.hide_get(): 
@@ -1350,7 +1352,9 @@ def export_rw4(file, export_symmetric, export_as_lod1):
 				else:
 					for t in ad.nla_tracks:
 						for s in t.strips:
-							exporter.b_shape_keys_actions[s.action] = obj
+							# Only export from active (checked) tracks
+							if t.active:
+								exporter.b_shape_keys_actions[s.action] = obj
 			split_object(obj)
 
 	# First process and export the skeleton (if any)
