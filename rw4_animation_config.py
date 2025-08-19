@@ -332,11 +332,11 @@ class SPORE_OT_auto_handles(bpy.types.Operator):
 	@classmethod
 	def poll(cls, context):
 		action = bpy.data.actions[context.scene.rw4_list_index]
-		return action.name in DEFAULT_HANDLE_POSITIONS
+		return action.name.split(".")[0] in DEFAULT_HANDLE_POSITIONS
 
 	def execute(self, context):
 		action = bpy.data.actions[context.scene.rw4_list_index]
-		result = get_default_handle_position(action.name)
+		result = get_default_handle_position(action.name.split(".")[0])
 		if result is not None:
 			action.rw4.initial_pos, action.rw4.final_pos = result
 		return {'FINISHED'}
