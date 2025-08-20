@@ -1112,7 +1112,7 @@ class RW4Exporter:
 		#     for i in range(3):
 		#         print(f"skin_bones_data += struct.pack('ffff', {dst_r[i][0]}, {dst_r[i][1]}, {dst_r[i][2]}, {dst_t[i]})")
 
-	def export_actions(self, use_morphs = True):
+	def export_actions(self, actions, use_morphs = True):
 
 		animations_list = rw4_base.Animations(self.render_ware)
 
@@ -1122,7 +1122,7 @@ class RW4Exporter:
 
 		# TODO: Allow for armatures and shape keys with the same name and length to be combined into one KeyframeAnim.
 		# Throw an error if they have the same name but different lengths.
-		for action in bpy.data.actions:
+		for action in actions:
 			if not action.fcurves:
 				continue
 
@@ -1141,9 +1141,19 @@ class RW4Exporter:
 			if not is_shape_key:
 				# If there is no armature using the action (and it's not shape key) then throw error
 				if action not in self.b_armature_actions:
-					error = rw4_validation.error_action_but_no_armature(action)
-					if error not in self.warnings:
-						self.warnings.add(error)
+					# This error will not throw if the action is in the NLA sheet for the armature but set inactive
+					matched = False
+					if self.b_armature_object.animation_data:
+						for t in self.b_armature_object.animation_data.nla_tracks:
+							if matched: break
+							for s in t.strips:
+								if s.action == action:
+									matched = True
+									break
+					if not matched:
+						error = rw4_validation.error_action_but_no_armature(action)
+						if error not in self.warnings:
+							self.warnings.add(error)
 					continue
 
 				# If the animation belongs to another armature, then it's in another collection and we can ignore it
@@ -1151,9 +1161,21 @@ class RW4Exporter:
 					continue
 			else:
 				if action not in self.b_shape_keys_actions:
-					error = rw4_validation.error_action_but_no_object(action)
-					if error not in self.warnings:
-						self.warnings.add(error)
+					# This error will not throw if the action is in the NLA sheet for any mesh object but set inactive
+					matched = False
+					for mesh in self.b_mesh_objects:
+						if matched: break
+						if mesh.animation_data:
+							for t in mesh.animation_data.nla_tracks:
+								if matched: break
+								for s in t.strips:
+									if s.action == action:
+										matched = True
+										break
+					if not matched:
+						error = rw4_validation.error_action_but_no_object(action)
+						if error not in self.warnings:
+							self.warnings.add(error)
 					continue
 
 				# If the animation does not use any of our meshes, then it's in another collection and we can ignore it
@@ -1286,6 +1308,21 @@ def remerge_objects():
 	# Restore Mode
 	bpy.ops.object.mode_set(mode=editormode)
 
+def can_export_object(obj):
+	if obj.type == 'ARMATURE':
+		# Do not export armatures if all their child objects are hidden
+		#if obj.hide_get(): 
+		child_visible = len(obj.children) == 0
+		for child in obj.children:
+			if child.hide_get() == False:
+				return True
+		if not child_visible:
+			return False
+	elif obj.type == 'MESH':
+		# Do not export hidden meshes
+		if obj.hide_get(): 
+			return False
+	return True
 
 def export_rw4(file, export_symmetric, export_as_lod1):
 	# NOTE: We might not use Spore's conventional ordering of RW objects, since it's a lot easier to do it this way.
@@ -1311,14 +1348,19 @@ def export_rw4(file, export_symmetric, export_as_lod1):
 				if mod.type == 'ARMATURE' and mod.object is not None:
 					mesh_count += 1
 
+	# TODO: create a list of ignored animations to not throw errors for on export?
+	# AKA the muted ones and any from other meshes
+	
 	# For collections, we need to know what each action animates
 	for obj in active_collection.all_objects:
+		if mesh_count != 1 and not can_export_object(obj):
+			continue
 		if obj.type == 'ARMATURE':
 			ad = obj.animation_data
 			if ad:
 				if ad.action:
 					exporter.b_armature_actions[ad.action] = obj
-				# If there is only one mesh, we can assume it uses all actions except those marked null
+				# If there is only one mesh/armature, we can assume it uses all actions except those marked null
 				if mesh_count == 1:
 					for action in bpy.data.actions:
 						# Disallow null actions
@@ -1328,20 +1370,17 @@ def export_rw4(file, export_symmetric, export_as_lod1):
 				# If there are multiple meshes, we need to check the NLA tracks
 				else:
 					for t in ad.nla_tracks:
-						for s in t.strips:
-							# Only export from active (checked) tracks
-							if t.active:
+						# Only export from non-muted/checked tracks
+						if not t.mute:
+							for s in t.strips:
 								exporter.b_armature_actions[s.action] = obj
 
-		if obj.type == 'MESH':
-			# Do not export hidden meshes
-			if obj.hide_get(): 
-				continue
-			elif obj.data.shape_keys and obj.data.shape_keys.animation_data:
+		elif obj.type == 'MESH':
+			if obj.data.shape_keys and obj.data.shape_keys.animation_data:
 				ad = obj.data.shape_keys.animation_data
 				if ad.action:
 					exporter.b_shape_keys_actions[ad.action] = obj
-				# One mesh, pull actions
+				# One mesh/armature, pull actions
 				if mesh_count == 1:
 					for action in bpy.data.actions:
 						# Disallow null actions
@@ -1351,26 +1390,27 @@ def export_rw4(file, export_symmetric, export_as_lod1):
 				# Multiple meshes, check the NLA tracks
 				else:
 					for t in ad.nla_tracks:
-						for s in t.strips:
-							# Only export from active (checked) tracks
-							if t.active:
+						# Only export from non-muted/checked tracks
+						if not t.mute:
+							for s in t.strips:
 								exporter.b_shape_keys_actions[s.action] = obj
 			split_object(obj)
 
 	# First process and export the skeleton (if any)
 	for obj in active_collection.all_objects:
-		if obj.type == 'ARMATURE':
+		if obj.type == 'ARMATURE' and (mesh_count == 1 or can_export_object(obj)):
 			exporter.export_armature_object(obj)
 
+	# Then export meshes
 	for obj in active_collection.all_objects:
-		if obj.type == 'MESH':
-			# Do not export hidden meshes
-			if not obj.hide_get():
-				exporter.export_mesh_object(obj)
+		if obj.type == 'MESH' and (mesh_count == 1 or can_export_object(obj)):
+			exporter.export_mesh_object(obj)
 
 	exporter.export_bbox()
 	exporter.export_kdtree()
-	exporter.export_actions(use_morphs = not export_as_lod1)
+	#actions = list(exporter.b_armature_actions.keys()) + list(exporter.b_shape_keys_actions.keys())
+	actions = bpy.data.actions
+	exporter.export_actions(actions, use_morphs = not export_as_lod1)
 	exporter.render_ware.write(file_io.FileWriter(file))
 
 	# Export symmetric variant of this model and these actions
@@ -1538,7 +1578,9 @@ def export_rw4_symmetric(file, active_collection, armature_actions, shape_keys_a
 		exporter_sym.export_mesh_object(mesh)
 	exporter_sym.export_bbox()
 	exporter_sym.export_kdtree()
-	exporter_sym.export_actions(use_morphs = not export_as_lod1)
+	#actions = list(exporter_sym.b_armature_actions.keys()) + list(exporter_sym.b_shape_keys_actions.keys())
+	actions = bpy.data.actions
+	exporter_sym.export_actions(actions, use_morphs = not export_as_lod1)
 
 	# Write symmetric model to file (append -symmetric)
 	sym_file_path = None

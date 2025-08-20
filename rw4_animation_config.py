@@ -121,9 +121,10 @@ DEFAULT_HANDLE_POSITIONS = {
 
 
 def get_default_handle_position(name):
-	if not bpy.data.meshes or name not in DEFAULT_HANDLE_POSITIONS:
+	name_nosuffix = name.split(".")[0]
+	if not bpy.data.meshes or name_nosuffix not in DEFAULT_HANDLE_POSITIONS:
 		return None
-	generator = DEFAULT_HANDLE_POSITIONS[name]
+	generator = DEFAULT_HANDLE_POSITIONS[name_nosuffix]
 
 	action = bpy.data.actions[name]
 	current_keyframe = bpy.context.scene.frame_current
@@ -336,7 +337,7 @@ class SPORE_OT_auto_handles(bpy.types.Operator):
 
 	def execute(self, context):
 		action = bpy.data.actions[context.scene.rw4_list_index]
-		result = get_default_handle_position(action.name.split(".")[0])
+		result = get_default_handle_position(action.name)
 		if result is not None:
 			action.rw4.initial_pos, action.rw4.final_pos = result
 		return {'FINISHED'}
