@@ -563,6 +563,7 @@ class RW4Importer:
 				fcurve.group = b_action_group
 				fcurves_vs.append(fcurve)
 
+		prev_qr = None
 		for k, kf in enumerate(channel.keyframes):
 			time = int(round(kf.time * rw4_base.KeyframeAnim.FPS))
 			bpy.context.scene.frame_set(time)  # So that parent.matrix works
@@ -574,6 +575,13 @@ class RW4Importer:
 				qr = transform.to_quaternion()
 				if b_pose_bone.parent is not None:
 					qr = b_pose_bone.parent.matrix.inverted().to_quaternion() @ qr
+
+				# Fix Euler flip: ensure shortest path between quaternions
+				if prev_qr is not None:
+					# If dot product is negative, flip quaternion to take shortest path
+					if prev_qr.dot(qr) < 0.0:
+						qr = -qr
+				prev_qr = qr.copy()
 
 				for i in range(4):
 					fcurves_qr[i].keyframe_points.insert(time, qr[i])
