@@ -1027,6 +1027,8 @@ class RW4Exporter:
 				channel.new_keyframe(keyframe_anim.length).factor = 0.0
 
 
+	# TODO: Fix bone positions when parent bone has multiple children.
+	# The child bones that are affected are the ones sorted alphabetically after the unaffected child bone
 	def process_skeleton_action(self, action, keyframe_anim):
 		# 1. Get all possible keyframe times
 		keyframe_times = {0}  # Ensure frame 0 is always there
@@ -1120,8 +1122,8 @@ class RW4Exporter:
 		if self.b_armature_object is not None and self.b_armature_object.animation_data is not None:
 			original_skeleton_action = self.b_armature_object.animation_data.action
 
-		# TODO: Allow for armatures and shape keys with the same name and length to be combined into one KeyframeAnim.
-		# Throw an error if they have the same name but different lengths.
+		# NOTE: As of v 2.7, this allows for armatures and shape keys with the same name
+		# to be combined into one KeyframeAnim.
 		for action in actions:
 			if not action.fcurves:
 				continue
