@@ -2,6 +2,7 @@ __author__ = 'Eric'
 
 from .rw_material import RWMaterial
 from .rw_material_builder import RWMaterialBuilder, SHADER_DATA, RWTextureSlot
+from .. import rw4_base
 import struct
 import bpy
 from bpy.props import (StringProperty,
@@ -81,10 +82,13 @@ class StaticModel(RWMaterial):
 
 		RWMaterial.set_general_settings(material, rw4_material, material_data)
 
-		material.shader_id = 0x80000002
+		if exporter.has_skeleton() or exporter.is_blend_shape(): material.shader_id = 0x80000004
+		else: material.shader_id = 0x80000002
 		material.unknown_booleans.append(True)
 		material.unknown_booleans.append(True)  # the rest are going to be False
 
+		if material.shader_id == 0x80000004:
+			material.FLAG3_RENDER_STATES = 0xc0000
 		# -- SHADER CONSTANTS -- #
 
 		material.add_shader_data(SHADER_DATA['materialParams'], struct.pack(
@@ -100,6 +104,27 @@ class StaticModel(RWMaterial):
 		# add showIdentityPS -hasData identityColor 0x218 -exclude 0x200
 		# add restoreAlphaPS -hasData 0x218 -exclude 0x200
 		material.add_shader_data(0x218, struct.pack('<i', 0x028B7C00))
+
+		# -- RENDER STATES -- #
+		render_ware = exporter.render_ware
+		if exporter.has_skeleton():
+			# In the shader, skinWeights.x = numWeights
+			material.add_shader_data(SHADER_DATA['skinWeights'], struct.pack('<i', 4))
+
+			material.add_shader_data(SHADER_DATA['skinBones'], struct.pack(
+				'<iiiii',
+				0,  # firstBone
+				exporter.get_bone_count(),  # numBones
+				0,
+				render_ware.get_index(None, rw4_base.INDEX_NO_OBJECT),  # ?
+				exporter.get_skin_matrix_buffer_index()))
+
+		if exporter.is_blend_shape():
+			material.add_shader_data(0x5, struct.pack('<i', 0))
+			material.add_shader_data(0x200, struct.pack('<ii',
+														len(exporter.blend_shape.shape_ids),
+														render_ware.get_index(exporter.blend_shape,
+																			  rw4_base.INDEX_SUB_REFERENCE)))
 
 		# -- TEXTURE SLOTS -- #
 
@@ -119,7 +144,7 @@ class StaticModel(RWMaterial):
 	@staticmethod
 	def parse_material_builder(material, rw4_material):
 
-		if material.shader_id != 0x80000002:
+		if material.shader_id != 0x80000002 and material.shader_id != 0x80000004: #not (material.shader_id == 0x80000004 and material.rw4.material_data_StaticModel.normal_texture):
 			return False
 
 		for data in material.shader_data:
