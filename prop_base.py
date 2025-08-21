@@ -26,7 +26,7 @@ types = [
 ]
 
 # TODO: we need to eventually try to pull in the "parent" key before loading in the file itself (recursively)
-# But right now is not a big deal
+# But right now its not a big deal
 
 #------------------------------------------
 # Classes
@@ -163,6 +163,20 @@ class PropFile():
 			elif mode == 'REPLACE':
 				self.properties[key] = property
 
+	# Write the properties to a file
+	def write(self, filepath):
+		with open(filepath, "w", encoding="utf-8") as f:
+			for prop in self.properties.items():
+				# list value
+				if isinstance(prop.value, list) and prop.key:
+					f.write(f"{prop.type} {prop.key}")
+					for item in prop.value:
+						f.write(f"\t{item}")
+					f.write("end")
+				# single value
+				else:
+					f.write(f"{prop.type} {prop.key} {prop.value}\n")
+
 	# Parse and return [Property(key, value, type), nextline] from a file's lines
 	# start_line is the line to begin reading from. nextline will be the line to read next.
 	def parse_property(self, lines : list, start_line : int):
@@ -256,19 +270,6 @@ class PropFile():
 		if len(values) == 1 and not type.endswith('s'):
 			values = values[0]  # If there's only one value, use that.
 		return [Property(key, values, type), nextline]
-
-	def write(self, filepath):
-		with open(filepath, "w", encoding="utf-8") as f:
-			for prop in self.properties.items():
-				# list value
-				if isinstance(prop.value, list) and prop.key:
-					f.write(f"{prop.type} {prop.key}")
-					for item in prop.value:
-						f.write(f"\t{item}")
-					f.write("end")
-				# single value
-				else:
-					f.write(f"{prop.type} {prop.key} {prop.value}\n")
 
 	# Returns array of keys
 	def keys(self):

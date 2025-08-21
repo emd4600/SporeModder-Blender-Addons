@@ -11,9 +11,9 @@ from bpy.props import (StringProperty,
 					   )
 
 
-class StaticModel(RWMaterial):
-	material_name = "Static Model"
-	material_description = "A simple static model which allows normal maps, used for props, backgrounds, etc."
+class StaticModelCustom(RWMaterial):
+	material_name = "Static Model (Custom)"
+	material_description = "A custom static model which allows for 2 diffuse textures to be used."
 	material_has_material_color = True
 	material_has_ambient_color = False
 	material_use_alpha = True
@@ -29,6 +29,13 @@ class StaticModel(RWMaterial):
 		name="Normal Texture",
 		description="The normal texture of this material, alpha channel is used as specular map"
 					" (leave empty if no texture desired)",
+		default="",
+		subtype='FILE_PATH'
+	)
+
+	diffuse_2_texture: StringProperty(
+		name="Diffuse 2 Texture",
+		description="The diffuse 2 texture of this material (leave empty if no texture desired)",
 		default="",
 		subtype='FILE_PATH'
 	)
@@ -53,21 +60,22 @@ class StaticModel(RWMaterial):
 
 	@staticmethod
 	def set_pointer_property(cls):
-		cls.material_data_StaticModel = PointerProperty(
-			type=StaticModel
+		cls.material_data_StaticModelCustom = PointerProperty(
+			type=StaticModelCustom#StaticModel
 		)
 
 	@staticmethod
 	def get_material_data(rw4_material):
-		return rw4_material.material_data_StaticModel
+		return rw4_material.material_data_StaticModelCustom
 
 	@staticmethod
 	def draw_panel(layout, rw4_material):
 
-		data = rw4_material.material_data_StaticModel
+		data = rw4_material.material_data_StaticModelCustom
 
 		layout.prop(data, 'diffuse_texture')
 		layout.prop(data, 'normal_texture')
+		layout.prop(data, 'diffuse_2_texture')
 		layout.prop(data, 'material_params_1')
 		layout.prop(data, 'material_params_2')
 		layout.prop(data, 'material_params_3')
@@ -75,7 +83,7 @@ class StaticModel(RWMaterial):
 
 	@staticmethod
 	def get_material_builder(exporter, rw4_material):
-		material_data = rw4_material.material_data_StaticModel
+		material_data = rw4_material.material_data_StaticModelCustom
 
 		material = RWMaterialBuilder()
 
@@ -111,7 +119,13 @@ class StaticModel(RWMaterial):
 		material.texture_slots.append(RWTextureSlot(
 			sampler_index=1,
 			texture_raster=exporter.add_texture(material_data.normal_texture),
-			disable_stage_op=True
+			
+		))
+
+		material.texture_slots.append(RWTextureSlot(
+			sampler_index=2,
+			texture_raster=exporter.add_texture(material_data.diffuse_2_texture)
+			#disable_stage_op=True
 		))
 
 		return material
@@ -129,7 +143,7 @@ class StaticModel(RWMaterial):
 		# if sh_data is None or sh_data.data is None or len(sh_data.data) != 4:
 		#     return False
 
-		material_data = rw4_material.material_data_StaticModel
+		material_data = rw4_material.material_data_StaticModelCustom
 
 		RWMaterial.parse_material_builder(material, rw4_material)
 
@@ -146,7 +160,18 @@ class StaticModel(RWMaterial):
 	@staticmethod
 	def set_texture(obj, material, slot_index, path):
 		if slot_index == 0:
-			material.rw4.material_data_StaticModel.diffuse_texture = path
+			material.rw4.material_data_StaticModelCustom.diffuse_texture = path
+
+			image = bpy.data.images.load(path)
+
+			texture_node = material.node_tree.nodes.new("ShaderNodeTexImage")
+			texture_node.image = image
+			texture_node.location = (-524, 256)
+
+			material.node_tree.links.new(material.node_tree.nodes["Principled BSDF"].inputs["Base Color"],
+										 texture_node.outputs["Color"])
+		elif slot_index == 2: 
+			material.rw4.material_data_StaticModelCustom.diffuse_2_texture = path
 
 			image = bpy.data.images.load(path)
 
@@ -158,7 +183,7 @@ class StaticModel(RWMaterial):
 										 texture_node.outputs["Color"])
 
 		else:
-			material.rw4.material_data_StaticModel.normal_texture = path
+			material.rw4.material_data_StaticModelCustom.normal_texture = path
 
 			image = bpy.data.images.load(path)
 			image.colorspace_settings.name = 'Non-Color'

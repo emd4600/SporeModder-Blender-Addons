@@ -231,7 +231,7 @@ def get_position(armature_matrix, channel, bone, secondary_reference_bone):
 			old_range = 0.0 - rest_pos.z
 			pos.z = (bone_pos.z - rest_pos.z) / old_range
 			
-	#TODO what role does relative_pos pay in the secondary?
+	#TODO what role does relative_pos play in the secondary?
 
 	return basis_matrix @ pos
 

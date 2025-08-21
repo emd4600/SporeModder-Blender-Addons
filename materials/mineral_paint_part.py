@@ -208,6 +208,12 @@ class MineralPaintPart(RWMaterial):
 		update=sync_texture_diffuse
 	)
 
+	use_window_parallax: BoolProperty(
+		name="Use Window Parallax",
+		description="Enable window parallax effect for this material",
+		default=False
+	)
+
 	fallback_texture: StringProperty(
 		name="Fallback Texture",
 		description="The fallback diffuse texture of this material (optional, leave empty if no texture desired)",
@@ -276,6 +282,8 @@ class MineralPaintPart(RWMaterial):
 
 		if data.paint_mode == 'TEXTURE':
 			layout.prop(data, 'diffuse_texture')
+			layout.prop(data, 'use_window_parallax')
+			
 		else:
 			layout.prop(data, 'paint_region')
 			if data.paint_mode == 'PAINT':
@@ -306,20 +314,29 @@ class MineralPaintPart(RWMaterial):
 
 		RWMaterial.set_general_settings(material, rw4_material, material_data)
 
-		material.shader_id = 0x80000005 if exporter.is_blend_shape() else 0x80000004
+		# Window textures require special properties
+		is_window_texture = material_data.paint_mode == 'TEXTURE' and material_data.use_window_parallax
+
+		# -- SHADER ID -- #
+		if is_window_texture: material.shader_id = 0x40000007
+		else: material.shader_id = 0x80000005 if exporter.is_blend_shape() else 0x80000004
 		material.unknown_booleans.append(True)  # the rest are going to be False
 
 		# -- RENDER STATES -- #
 
+		# Bit of a hack
+		#if is_window_texture:
+			#material.set_render_states('WINDOW_ALPHA')
+		#else:
 		material.set_render_states(rw4_material.alpha_type)
 
 		# -- SHADER CONSTANTS -- #
 
-		region = 50 if material_data.paint_mode == 'TEXTURE' else material_data.paint_region
+		if not is_window_texture:
+			region = 50 if material_data.paint_mode == 'TEXTURE' else material_data.paint_region
+			material.add_shader_data(SHADER_DATA['region'], struct.pack('<ii', region, 0x00C7E300))
+
 		diffuse_texture = ""
-
-		material.add_shader_data(SHADER_DATA['region'], struct.pack('<ii', region, 0x00C7E300))
-
 		if material_data.paint_mode == 'TEXTURE':
 			diffuse_texture = material_data.diffuse_texture
 			material.add_shader_data(0x217, struct.pack('<i', 0))
@@ -367,16 +384,20 @@ class MineralPaintPart(RWMaterial):
 	@staticmethod
 	def parse_material_builder(material: RWMaterialBuilder, rw4_material):
 
-		if material.shader_id != 0x80000004 and material.shader_id != 0x80000005:
+		if material.shader_id != 0x80000004 and material.shader_id != 0x80000005 and material.shader_id != 0x40000007:
 			return False
 
-		sh_data = material.get_shader_data(SHADER_DATA['region'])
-		if sh_data is None or sh_data.data is None or len(sh_data.data) != 8:
-			return False
+		is_window_texture = material.shader_id == 0x40000007
+
+		if not is_window_texture:
+			sh_data = material.get_shader_data(SHADER_DATA['region'])
+			if sh_data is None or sh_data.data is None or len(sh_data.data) != 8:
+				return False
 
 		material_data = rw4_material.material_data_MineralPaintPart
 
-		material_data.paint_region = struct.unpack('<ii', sh_data.data)[0]
+		if not is_window_texture:
+			material_data.paint_region = struct.unpack('<ii', sh_data.data)[0]
 
 		RWMaterial.parse_material_builder(material, rw4_material)
 
@@ -397,12 +418,16 @@ class MineralPaintPart(RWMaterial):
 				material_data.paint_mode = 'PAINT_COLOR'
 			else:
 				material_data.paint_mode = 'TEXTURE'
+				if is_window_texture:
+					material_data.use_window_parallax = True
 
 		return True
 
 	@staticmethod
 	def set_texture(obj, material, slot_index, path):
 		material.rw4.material_data_SkinPaintPart.diffuse_texture = path
+		material.rw4.material_data_MineralPaintPart.diffuse_texture = path
+		material.rw4.material_data_MineralPaintPart.fallback_texture = path
 
 		image = bpy.data.images.load(path)
 
