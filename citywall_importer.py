@@ -31,9 +31,9 @@ def import_citywall(filepath):
 		bpy.ops.object.empty_add(type='CIRCLE', location=(0, 0, 0), rotation=(math.radians(90), 0, 0))
 		obj = bpy.context.active_object
 		move_to_collection(obj, collection)
-		obj.name = prop.name
+		obj.name = prop.key
 		obj.empty_display_size = prop.value
-		if prop.is_name('tribeGridScale'):
+		if prop.is_key('tribeGridScale'):
 			obj.empty_display_type = 'PLAIN_AXES'
 
 
@@ -43,34 +43,34 @@ def import_citywall(filepath):
 		bpy.ops.object.empty_add(type='CUBE', location=prop.value, radius=2)
 		obj = bpy.context.active_object
 		move_to_collection(obj, collection)
-		obj.name = prop.name
-		if prop.is_name('City_Hall'):
+		obj.name = prop.key
+		if prop.is_key('City_Hall'):
 			obj.empty_display_size = 5
 			obj.scale.z = 1.5
-		elif prop.is_name('modelOffset'):
+		elif prop.is_key('modelOffset'):
 			obj.empty_display_type = 'PLAIN_AXES'
-		elif prop.is_name('totemPolePosition'):
+		elif prop.is_key('totemPolePosition'):
 			obj.empty_display_type = 'SINGLE_ARROW'
 			obj.empty_display_size = 10
-		elif prop.is_name('animalPenPosition'):
+		elif prop.is_key('animalPenPosition'):
 			obj.empty_display_type = 'CIRCLE'
 			obj.rotation_euler = (math.radians(90), 0, 0)
 			obj.empty_display_size = 7.5
-		elif prop.is_name('eggPenPosition'):
+		elif prop.is_key('eggPenPosition'):
 			obj.empty_display_size = 1.0
-		elif prop.is_name('foodMatPosition'):
+		elif prop.is_key('foodMatPosition'):
 			obj.scale.z = 0.5
-		elif prop.is_name('tribeGridScale'):
+		elif prop.is_key('tribeGridScale'):
 			obj.empty_display_size = 1.0
-		elif prop.name.startswith('0x') or prop.is_name('modelLevelParams'):
+		elif prop.key.startswith('0x') or prop.is_key('modelLevelParams'):
 			obj.empty_display_type = 'PLAIN_AXES'
 			obj.empty_display_size = 1.0
 
 	# Import vector3s as mesh object point clouds with unconnected vertices
 	for prop in propfile.get_properties_by_type('vector3s'):
 		prop.mark()
-		mesh = bpy.data.meshes.new(prop.name)
-		obj = bpy.data.objects.new(prop.name, mesh)
+		mesh = bpy.data.meshes.new(prop.key)
+		obj = bpy.data.objects.new(prop.key, mesh)
 		bpy.context.scene.collection.objects.link(obj)
 
 		# Create verts from vector list
@@ -78,12 +78,12 @@ def import_citywall(filepath):
 		edges = []
 
 		# Negate the "5" z values of the tribal chat areas. Revert on save.
-		if prop.is_name('TribeChatAreas'):
+		if prop.is_key('TribeChatAreas'):
 			for idx, vert in enumerate(verts):
 				verts[idx] = (vert[0], vert[1], 1)
 
 		# For Buildings, connect edges according to BuildingLink*
-		if prop.is_name('Buildings'):
+		if prop.is_key('Buildings'):
 			# Add in City hall position
 			cityhallpos = propfile.get_value('City_Hall')
 			verts.insert(0, cityhallpos)
@@ -106,7 +106,7 @@ def import_citywall(filepath):
 							edges.remove((idx_connect, idx_src))
 		
 		# For Turrets, connect edges in order
-		if prop.is_name('Turrets'):
+		if prop.is_key('Turrets'):
 			for idx in range(len(verts) - 1):
 				edges.append((idx, idx + 1))
 			if len(verts) > 1:
@@ -120,19 +120,19 @@ def import_citywall(filepath):
 
 		# Add each vertex to its own vertex group labeled after its property name + idx
 		for idx in range(len(verts)):
-			if prop.is_name('Buildings') and idx == 0:
+			if prop.is_key('Buildings') and idx == 0:
 				name = "CityHall"
-			else: name = prop.name + str(idx)
+			else: name = prop.key + str(idx)
 
 			vg = obj.vertex_groups.new(name=name)
 			vg.add([idx], 1.0, 'ADD')
 
 		# Assign geometry nodes
-		if prop.is_name('Buildings') or prop.is_name('ToolPositions'):
+		if prop.is_key('Buildings') or prop.is_key('ToolPositions'):
 			geo.object_set_geo_node(obj, geonode_buildings)
-		elif prop.is_name('Turrets'):
+		elif prop.is_key('Turrets'):
 			geo.object_set_geo_node(obj, geonode_turrets)
-		elif prop.is_name('Decorations'):
+		elif prop.is_key('Decorations'):
 			geo.object_set_geo_node(obj, geonode_decor)
 
 
@@ -146,7 +146,7 @@ def import_citywall(filepath):
 	# TODO: Make sure not to do this for any parent file properties
 	from .prop_base import Hash, ResourceKey
 	for prop in propfile.get_unmarked_properties():
-		meta_name = prop.type + " " + prop.name
+		meta_name = prop.type + " " + prop.key
 		if isinstance(prop.value, (Hash, ResourceKey)) or not isinstance(prop.value, (int, float, dict, str, list)):
 			obj[meta_name] = str(prop.value)
 		elif isinstance(prop.value, list):

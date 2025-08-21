@@ -75,19 +75,19 @@ class Hash():
 #-----------------------------------------------------------------------------------------
 
 class Property():
-	def __init__(self, name, value, type):
-		self.name = name
+	def __init__(self, key, value, type):
+		self.key : str = key
 		self.value = value
-		self.type = type
+		self.type : str = type
 		# Set marked to true when used, so unmarked properties can be filtered.
 		# Also set any properties from the Parent files as marked.
 		self.marked = False
 
 	def kv(self):
-		return [self.name, self.value]
+		return [self.key, self.value]
 		
-	def is_name(self, keyname):
-		return self.name.lower() == keyname.lower()
+	def is_key(self, keyname):
+		return self.key.lower() == keyname.lower()
 	
 	def mark(self):
 		self.marked = True
@@ -102,11 +102,11 @@ class Property():
 		return len(self.value) if isinstance(self.value, list) else 1
 	
 	def __str__(self):
-		return f"Property(name={self.name}, value={self.value}, type={self.type})"
+		return f"Property(key={self.key}, value={self.value}, type={self.type})"
 
 	def _natural_sort_key(self):
-		# Split name into text and number chunks for natural sorting
-		return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', self.name.lower())]
+		# Split key into text and number chunks for natural sorting
+		return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', self.key.lower())]
 
 	def __lt__(self, other):
 		return self._natural_sort_key() < other._natural_sort_key()
@@ -121,14 +121,14 @@ class Property():
 class PropFile():
 	def __init__(self, filepath):
 		self.filepath = filepath
-		self.name = os.path.basename(filepath).split('.')[0] # Filename sans extension
+		self.key = os.path.basename(filepath).split('.')[0] # Filename sans extension
 		self.directory = os.path.dirname(filepath) # Directory path
 
 		self.properties = {} # name : Property
-		self.parse_prop_file(filepath)
+		self.read(filepath)
 
-	# Load properties into self.properties
-	def parse_prop_file(self, filepath):
+	# Parse file and load and properties into self.properties
+	def read(self, filepath):
 		with open(filepath, 'r') as file:
 			lines = file.readlines()
 			# Read lines into properties until we hit the end
@@ -137,7 +137,7 @@ class PropFile():
 				prop = self.parse_property(lines, nextline)
 				if prop:
 					if prop[0] is not None:
-						self.properties[prop[0].name.lower()] = prop[0]
+						self.properties[prop[0].key.lower()] = prop[0]
 					nextline = prop[1]
 				else:
 					nextline = -1
@@ -163,7 +163,7 @@ class PropFile():
 			elif mode == 'REPLACE':
 				self.properties[key] = property
 
-	# Parse and return [Property(name, value, type), nextline] from a file's lines
+	# Parse and return [Property(key, value, type), nextline] from a file's lines
 	# start_line is the line to begin reading from. nextline will be the line to read next.
 	def parse_property(self, lines : list, start_line : int):
 		nextline : int = start_line + 1 # what line to read next.
@@ -173,13 +173,13 @@ class PropFile():
 			return [None, nextline] # No property data found
 		
 		type = propdata[0].lower() # Property type
-		name = propdata[1] # Property name
+		key = propdata[1] # Property name
 		data_array = [] # Array of the property values
 
-		# If the propline contains a value after the prop name, use that. Otherwise, look on the next lines.
+		# If the propline contains a value after the prop key, use that. Otherwise, look on the next lines.
 		if len(propdata) > 2:
 			value = lines[start_line].strip().lower()
-			value = re.sub(f"{type}|{name.lower()}", '', value).strip()
+			value = re.sub(f"{type}|{key.lower()}", '', value).strip()
 			data_array.append(value)
 		else:
 			# Gather the list data until we hit 'end'
@@ -255,8 +255,20 @@ class PropFile():
 
 		if len(values) == 1 and not type.endswith('s'):
 			values = values[0]  # If there's only one value, use that.
-		return [Property(name, values, type), nextline]
+		return [Property(key, values, type), nextline]
 
+	def write(self, filepath):
+		with open(filepath, "w", encoding="utf-8") as f:
+			for prop in self.properties.items():
+				# list value
+				if isinstance(prop.value, list) and prop.key:
+					f.write(f"{prop.type} {prop.key}")
+					for item in prop.value:
+						f.write(f"\t{item}")
+					f.write("end")
+				# single value
+				else:
+					f.write(f"{prop.type} {prop.key} {prop.value}\n")
 
 	# Returns array of keys
 	def keys(self):
@@ -317,13 +329,13 @@ class PropFile():
 		return [self.properties.get(key.lower()).value for key in keys]
 
 	#--------------------------
-	# KVs [name: value]
+	# KVs [key: value]
 
-	# Get [name, value] for a key
+	# Get [key, value] for a key
 	def get_keyvalue(self, key):
 		return [key, self.properties.get(key.lower()).value]
 
-	# Get [name, value]s for multiple keys
+	# Get [key, value]s for multiple keys
 	def get_keyvalues(self, keys):
 		return [[key, self.properties.get(key.lower()).value] for key in keys]
 

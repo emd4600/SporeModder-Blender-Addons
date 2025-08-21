@@ -4,6 +4,7 @@ import bpy
 import os
 import re
 from mathutils import Matrix, Vector
+from .prop_base import PropFile
 
 
 def show_message_box(message, title="Import Error", icon='ERROR'):
@@ -17,8 +18,7 @@ def import_muscle_group(filepath, curve_name, filepath_max=None):
 	Muscle groups are imported as polygon paths (curves).
 	If filepath_max is provided, creates a shape key "max" that moves/scales the points to match max data.
 	"""
-
-	from .prop_base import PropFile
+	
 	propfile : PropFile = PropFile(filepath)
 	offsets = propfile.get_value("muscleOffsets")
 	percentages = propfile.get_value("musclePercentages")
@@ -104,30 +104,15 @@ def parse_muscle_file(filepath):
 	"""
 	Parse a Muscle file and return a list of muscle group file paths.
 	"""
-	mode = None
 	muscle_groups = []
-	base_dir = os.path.dirname(filepath)
-	with open(filepath, 'r') as file:
-		for line in file:
-			line = line.strip()
-			if line.lower().startswith('keys musclegroups'):
-				mode = 'groups'
-				continue
-			elif line.lower() == 'end':
-				mode = None
-				continue
-		
-			# Pull in muscle group file paths
-			if mode == 'groups' and line:
-				# Create full path to muscle group file
-				fname = line.split('!')[1].split('.')[0]  # filename without extension
-				#folder = line.split('!')[0]
-				#parent_dir = os.path.dirname(base_dir)
-				#group_path = os.path.join(parent_dir, folder, fname + '.prop.prop_t')
-				group_path = os.path.join(base_dir, fname + '.prop.prop_t')
-				muscle_groups.append(group_path)
+	propfile : PropFile = PropFile(filepath)
+	if propfile:
+		base_dir = os.path.dirname(filepath)
+		for reskey in propfile.get_value("muscleGroups"):
+			# Create full path to muscle group file
+			group_path = os.path.join(base_dir, reskey.instance + '.prop.prop_t')
+			muscle_groups.append(group_path)
 	return muscle_groups
-
 
 def import_muscle_file(filepath):
 	"""
@@ -144,7 +129,7 @@ def import_muscle_file(filepath):
 	minmax = find_min_max_variant(parent_dir, os.path.basename(filepath).split('.')[0])
 
 	if len(minmax) == 3:
-		muscle_groups= parse_muscle_file(os.path.join(parent_dir, minmax[0] + '.prop.prop_t'))
+		muscle_groups = parse_muscle_file(os.path.join(parent_dir, minmax[0] + '.prop.prop_t'))
 		muscle_groups_max = parse_muscle_file(os.path.join(parent_dir, minmax[1] + '.prop.prop_t'))
 	else:
 		muscle_groups = parse_muscle_file(filepath)
