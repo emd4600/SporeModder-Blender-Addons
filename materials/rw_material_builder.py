@@ -463,7 +463,10 @@ class RWMaterialBuilder:
 		if rw4_enums.D3DRS_ALPHATESTENABLE not in self.render_states:
 			return None
 		if self.render_states[rw4_enums.D3DRS_ALPHATESTENABLE] == 0:
-			return 'NO_ALPHA'
+			if rw4_enums.D3DRS_ALPHABLENDENABLE not in self.render_states or self.render_states[rw4_enums.D3DRS_ALPHABLENDENABLE] == 0:
+				return 'NO_ALPHA'
+			else:
+				return 'WINDOW_ALPHA'
 		else:
 			if rw4_enums.D3DRS_ALPHAREF not in self.render_states or self.render_states[rw4_enums.D3DRS_ALPHAREF] == 0:
 				return 'ALPHA'
