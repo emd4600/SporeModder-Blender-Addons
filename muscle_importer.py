@@ -119,7 +119,6 @@ def import_muscle_file(filepath):
 	Import a Muscle file containing multiple muscle groups.
 
 	Supports limited importing of min/max variants.
-	TODO: generate a min/max action that slides between basis and max shapes for easy previewing.
 	"""
 
 	# Check for possible min/max variant of muscle file
@@ -183,7 +182,7 @@ def import_muscle_file(filepath):
 
 #----------------------------------------------------------------------------------------------
 
-# TODO: automatically detect min and max muscle files,
+# Automatically detect min and max muscle files,
 # and import min as the base and max as a shape key set.
 def import_muscle_group_or_file(filepath):
 	"""
