@@ -82,11 +82,11 @@ def error_modifiers(obj):
 
 
 def error_action_but_no_armature(action):
-	return f"Action {action.name} does not use shape keys, but the armature does not exist either."
+	return f"Armature action {action.name} is not assigned to any armature and will not be exported."
 
 
 def error_action_but_no_object(action):
-	return f"Action {action.name} uses shape keys, but is not assigned to any object; it will not be exported."
+	return f"Shape key action {action.name} is not assigned to any object and will not be exported."
 
 
 def error_no_bone_for_vertex_group(v_group):
