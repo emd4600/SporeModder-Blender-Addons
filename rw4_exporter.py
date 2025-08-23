@@ -1114,7 +1114,7 @@ class RW4Exporter:
 		#     for i in range(3):
 		#         print(f"skin_bones_data += struct.pack('ffff', {dst_r[i][0]}, {dst_r[i][1]}, {dst_r[i][2]}, {dst_t[i]})")
 
-	def export_actions(self, actions, use_morphs = True):
+	def export_actions(self, ignored_actions, use_morphs = True):
 
 		animations_list = rw4_base.Animations(self.render_ware)
 
@@ -1122,8 +1122,10 @@ class RW4Exporter:
 		if self.b_armature_object is not None and self.b_armature_object.animation_data is not None:
 			original_skeleton_action = self.b_armature_object.animation_data.action
 
+		# Loop thru all actions to find used ones, ignored ones (no error), and non-present ones (throw error)
 		# NOTE: As of v 2.7, this allows for armatures and shape keys with the same name
 		# to be combined into one KeyframeAnim.
+		actions = bpy.data.actions
 		for action in actions:
 			if not action.fcurves:
 				continue
@@ -1140,19 +1142,21 @@ class RW4Exporter:
 
 			is_shape_key = action.id_root == 'KEY'
 
+			# Armature
 			if not is_shape_key:
-				# If there is no armature using the action (and it's not shape key) then throw error
+				# If there is no armature using the action then throw error
 				if action not in self.b_armature_actions:
 					# This error will not throw if the action is in the NLA sheet for the armature but set inactive
-					matched = False
-					if self.b_armature_object.animation_data:
-						for t in self.b_armature_object.animation_data.nla_tracks:
-							if matched: break
-							for s in t.strips:
-								if s.action == action:
-									matched = True
-									break
-					if not matched:
+					#matched = False
+					#if self.b_armature_object.animation_data:
+					#	for t in self.b_armature_object.animation_data.nla_tracks:
+					#		if matched: break
+					#		for s in t.strips:
+					#			if s.action == action:
+					#				matched = True
+					#				break
+					#if not matched:
+					if action not in ignored_actions:
 						error = rw4_validation.error_action_but_no_armature(action)
 						if error not in self.warnings:
 							self.warnings.add(error)
@@ -1161,20 +1165,23 @@ class RW4Exporter:
 				# If the animation belongs to another armature, then it's in another collection and we can ignore it
 				if self.b_armature_actions[action] != self.b_armature_object:
 					continue
+			
+			# Shape Key
 			else:
 				if action not in self.b_shape_keys_actions:
 					# This error will not throw if the action is in the NLA sheet for any mesh object but set inactive
-					matched = False
-					for mesh in self.b_mesh_objects:
-						if matched: break
-						if mesh.animation_data:
-							for t in mesh.animation_data.nla_tracks:
-								if matched: break
-								for s in t.strips:
-									if s.action == action:
-										matched = True
-										break
-					if not matched:
+					#matched = False
+					#for mesh in self.b_mesh_objects:
+					#	if matched: break
+					#	if mesh.animation_data:
+					#		for t in mesh.animation_data.nla_tracks:
+					#			if matched: break
+					#			for s in t.strips:
+					#				if s.action == action:
+					#					matched = True
+					#					break
+					#if not matched:
+					if action not in ignored_actions:
 						error = rw4_validation.error_action_but_no_object(action)
 						if error not in self.warnings:
 							self.warnings.add(error)
@@ -1353,22 +1360,44 @@ def export_rw4(file, export_symmetric, export_as_lod1):
 	# TODO: create a list of ignored animations to not throw errors for on export?
 	# AKA the muted ones and any from other meshes
 	
+	valid_armatures = []
+	valid_meshes = []
+	ignored_actions = [] # ignore these on export without throwing an error
+
 	# For collections, we need to know what each action animates
-	for obj in active_collection.all_objects:
+	for obj in bpy.context.scene.collection.all_objects:
+		# cannot export object, add its actions to ignored.
 		if mesh_count != 1 and not can_export_object(obj):
+			ad = None
+			if obj.type == 'ARMATURE':
+				ad = obj.animation_data
+			elif obj.type == 'MESH':
+				if obj.data.shape_keys and obj.data.shape_keys.animation_data:
+					ad = obj.data.shape_keys.animation_data
+			if ad:
+				# Add actions to ignored list.
+				for t in ad.nla_tracks:
+					for s in t.strips:
+						ignored_actions.append(s.action)
 			continue
+
 		if obj.type == 'ARMATURE':
 			ad = obj.animation_data
 			if ad:
+				valid_armatures.append(obj)
 				if ad.action:
 					exporter.b_armature_actions[ad.action] = obj
+					if ad.action in ignored_actions: ignored_actions.remove(ad.action)
 				# If there is only one mesh/armature, we can assume it uses all actions except those marked null
 				if mesh_count == 1:
 					for action in bpy.data.actions:
 						# Disallow null actions
 						if action in exporter.b_armature_actions and exporter.b_armature_actions[action].name.lower().startswith("null"):
+							ignored_actions.append(action)
 							continue
 						exporter.b_armature_actions[action] = obj
+						if action in ignored_actions: ignored_actions.remove(action)
+						continue
 				# If there are multiple meshes, we need to check the NLA tracks
 				else:
 					for t in ad.nla_tracks:
@@ -1376,19 +1405,28 @@ def export_rw4(file, export_symmetric, export_as_lod1):
 						if not t.mute:
 							for s in t.strips:
 								exporter.b_armature_actions[s.action] = obj
-
+								if s.action in ignored_actions: ignored_actions.remove(s.action)
+								continue
+						# Add muted track actions to ignored actions
+						else:
+							for s in t.strips:
+								ignored_actions.append(s.action)
 		elif obj.type == 'MESH':
+			valid_meshes.append(obj)
 			if obj.data.shape_keys and obj.data.shape_keys.animation_data:
 				ad = obj.data.shape_keys.animation_data
 				if ad.action:
 					exporter.b_shape_keys_actions[ad.action] = obj
+					if ad.action in ignored_actions: ignored_actions.remove(ad.action)
 				# One mesh/armature, pull actions
 				if mesh_count == 1:
 					for action in bpy.data.actions:
 						# Disallow null actions
 						if action in exporter.b_shape_keys_actions and exporter.b_shape_keys_actions[action].name.lower().startswith("null"):
+							ignored_actions.append(action)
 							continue
 						exporter.b_shape_keys_actions[action] = obj
+						if action in ignored_actions: ignored_actions.remove(action)
 				# Multiple meshes, check the NLA tracks
 				else:
 					for t in ad.nla_tracks:
@@ -1396,28 +1434,29 @@ def export_rw4(file, export_symmetric, export_as_lod1):
 						if not t.mute:
 							for s in t.strips:
 								exporter.b_shape_keys_actions[s.action] = obj
+								if s.action in ignored_actions: ignored_actions.remove(s.action)
+						# Add muted track actions to ignored actions
+						else:
+							for s in t.strips:
+								ignored_actions.append(s.action)
 			split_object(obj)
 
 	# First process and export the skeleton (if any)
-	for obj in active_collection.all_objects:
-		if obj.type == 'ARMATURE' and (mesh_count == 1 or can_export_object(obj)):
-			exporter.export_armature_object(obj)
+	for obj in valid_armatures:
+		exporter.export_armature_object(obj)
 
 	# Then export meshes
-	for obj in active_collection.all_objects:
-		if obj.type == 'MESH' and (mesh_count == 1 or can_export_object(obj)):
-			exporter.export_mesh_object(obj)
+	for obj in valid_meshes:
+		exporter.export_mesh_object(obj)
 
 	exporter.export_bbox()
 	exporter.export_kdtree()
-	#actions = list(exporter.b_armature_actions.keys()) + list(exporter.b_shape_keys_actions.keys())
-	actions = bpy.data.actions
-	exporter.export_actions(actions, use_morphs = not export_as_lod1)
+	exporter.export_actions(ignored_actions, use_morphs = not export_as_lod1)
 	exporter.render_ware.write(file_io.FileWriter(file))
 
 	# Export symmetric variant of this model and these actions
 	if export_symmetric:
-		export_rw4_symmetric(file, active_collection, exporter.b_armature_actions, exporter.b_shape_keys_actions, export_as_lod1)
+		export_rw4_symmetric(file, valid_armatures, valid_meshes, ignored_actions, exporter.b_armature_actions, exporter.b_shape_keys_actions, export_as_lod1)
 
 	# Reset frame
 	bpy.context.scene.frame_set(current_keyframe)
@@ -1432,7 +1471,7 @@ def export_rw4(file, export_symmetric, export_as_lod1):
 
 
 
-def export_rw4_symmetric(file, active_collection, armature_actions, shape_keys_actions, export_as_lod1):
+def export_rw4_symmetric(file, armatures, meshes, ignored_actions, armature_actions, shape_keys_actions, export_as_lod1):
 	# Mirrors the active collection's meshes and armatures across X axis,
 	# flips face normals, and mirrors armature action bone keyframes
 
@@ -1547,27 +1586,25 @@ def export_rw4_symmetric(file, active_collection, armature_actions, shape_keys_a
 	mirrored_shape_actions = {}
 
 	# Mirror meshes in collection
-	for obj in active_collection.all_objects:
-		if obj.type == 'MESH':
-			mirrored_mesh = mirror_mesh_object(obj)
-			mirrored_objs.append(mirrored_mesh)
-			# Pull keys
-			if obj.data.shape_keys and obj.data.shape_keys.animation_data:
-				for item in shape_keys_actions:
-					if shape_keys_actions[item] == obj:
-						mirrored_shape_actions[item] = mirrored_mesh # no need to mirror since mesh is mirrored
+	for obj in meshes:
+		mirrored_mesh = mirror_mesh_object(obj)
+		mirrored_objs.append(mirrored_mesh)
+		# Pull keys
+		if obj.data.shape_keys and obj.data.shape_keys.animation_data:
+			for item in shape_keys_actions:
+				if shape_keys_actions[item] == obj:
+					mirrored_shape_actions[item] = mirrored_mesh # no need to mirror since mesh is mirrored
 
 	# Mirror armatures in collection
-	for obj in active_collection.all_objects:
-		if obj.type == 'ARMATURE':
-			mirrored_arm = mirror_armature_object(obj)
-			mirrored_armatures.append(mirrored_arm)
-			# Mirror armature actions
-			if obj.animation_data:
-				for item in armature_actions:
-					if armature_actions[item] == obj:
-						act = mirror_action(item, mirrored_arm)
-						mirrored_actions[act] = mirrored_arm
+	for obj in armatures:
+		mirrored_arm = mirror_armature_object(obj)
+		mirrored_armatures.append(mirrored_arm)
+		# Mirror armature actions
+		if obj.animation_data:
+			for item in armature_actions:
+				if armature_actions[item] == obj:
+					act = mirror_action(item, mirrored_arm)
+					mirrored_actions[act] = mirrored_arm
 
 	# Start exporting
 	exporter_sym = RW4Exporter()
@@ -1580,9 +1617,7 @@ def export_rw4_symmetric(file, active_collection, armature_actions, shape_keys_a
 		exporter_sym.export_mesh_object(mesh)
 	exporter_sym.export_bbox()
 	exporter_sym.export_kdtree()
-	#actions = list(exporter_sym.b_armature_actions.keys()) + list(exporter_sym.b_shape_keys_actions.keys())
-	actions = bpy.data.actions
-	exporter_sym.export_actions(actions, use_morphs = not export_as_lod1)
+	exporter_sym.export_actions(ignored_actions, use_morphs = not export_as_lod1)
 
 	# Write symmetric model to file (append -symmetric)
 	sym_file_path = None
