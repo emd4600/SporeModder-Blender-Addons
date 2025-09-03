@@ -2,12 +2,14 @@ __author__ = 'Allison'
 
 import bpy, re, math, os
 from . import geo_nodes as geo
+from . import mod_paths
 
 # TODO: implement cityHallDiasHeight for cityhall Z height? and export accordingly
 # Also store other imported paramters for export, maybe as metadata or empty objects
 
 def import_citywall(filepath):
 	print("Importing from:", filepath)
+	mod_paths.set_mod_folder(filepath)
 
 	from .prop_base import PropFile
 	propfile : PropFile = PropFile(filepath)
@@ -15,6 +17,7 @@ def import_citywall(filepath):
 	geonode_buildings = geo.create_geonode_buildings()
 	geonode_turrets = geo.create_geonode_turrets()
 	geonode_decor = geo.create_geonode_decor()
+	geonode_gates = geo.create_geonode_gates()
 
 	# Create new collection for the imported object
 	collection_name = os.path.basename(filepath).split('.')[0]
@@ -40,14 +43,19 @@ def import_citywall(filepath):
 	# Import single vector3 locations as empty objects
 	for prop in propfile.get_properties_by_type('vector3'):
 		prop.mark()
+		# City hall will be set to show up in the buildings list, no need to add it here.
+		if prop.is_key('City_Hall'):
+			continue
+		# Make the "Gates" into a mesh with vert groups instead
+		if "_gate" in prop.key.lower():
+			continue
+		#------------------------------
 		bpy.ops.object.empty_add(type='CUBE', location=prop.value, radius=2)
 		obj = bpy.context.active_object
 		move_to_collection(obj, collection)
 		obj.name = prop.key
-		if prop.is_key('City_Hall'):
-			obj.empty_display_size = 5
-			obj.scale.z = 1.5
-		elif prop.is_key('modelOffset'):
+		#------------------------------
+		if prop.is_key('modelOffset'):
 			obj.empty_display_type = 'PLAIN_AXES'
 		elif prop.is_key('totemPolePosition'):
 			obj.empty_display_type = 'SINGLE_ARROW'
@@ -69,6 +77,9 @@ def import_citywall(filepath):
 	# Import vector3s as mesh object point clouds with unconnected vertices
 	for prop in propfile.get_properties_by_type('vector3s'):
 		prop.mark()
+		# Handle separately.
+		if prop.is_key('Side_Gates'):
+			continue
 		mesh = bpy.data.meshes.new(prop.key)
 		obj = bpy.data.objects.new(prop.key, mesh)
 		bpy.context.scene.collection.objects.link(obj)
@@ -77,7 +88,7 @@ def import_citywall(filepath):
 		verts = prop.value
 		edges = []
 
-		# Negate the "5" z values of the tribal chat areas. Revert on save.
+		# Negate the "5" z values of the tribal chat areas. Revert on export.
 		if prop.is_key('TribeChatAreas'):
 			for idx, vert in enumerate(verts):
 				verts[idx] = (vert[0], vert[1], 1)
@@ -86,6 +97,10 @@ def import_citywall(filepath):
 		if prop.is_key('Buildings'):
 			# Add in City hall position
 			cityhallpos = propfile.get_value('City_Hall')
+			cityhalldiasheight = propfile.get_property('cityHallDiasHeight')
+			if (cityhalldiasheight):
+				cityhalldiasheight.mark()
+				cityhallpos[2] = propfile.get_value('cityHallDiasHeight', cityhallpos[2])
 			verts.insert(0, cityhallpos)
 
 			bld_links = propfile.get_properties_by_prefix('BuildingLink')
@@ -135,17 +150,56 @@ def import_citywall(filepath):
 		elif prop.is_key('Decorations'):
 			geo.object_set_geo_node(obj, geonode_decor)
 
+	# Handle gates as one mesh.
+	if (True):
+		# Create verts from vector list
+		verts = []
+		edges = []
+		vertgroupnames = []
+
+		# Set up mesh
+		mesh = bpy.data.meshes.new(prop.key)
+		obj = bpy.data.objects.new(prop.key, mesh)
+		bpy.context.scene.collection.objects.link(obj)
+
+		# Find all gate properties and add to the mesh data
+		for prop in propfile.get_properties_containing('_gate'):
+			if prop.is_type('vector3s'):
+				i = 0
+				for item in prop.value:
+					verts.append(item)
+					vertgroupnames.append(prop.key + str(i))
+					i += 1
+			elif prop.is_type('vector3'):
+				verts.append(prop.value)
+				vertgroupnames.append(prop.key)
+
+		# Build mesh
+		mesh.from_pydata(verts, edges, [])
+		mesh.update()
+		bpy.context.view_layer.objects.active = obj
+		move_to_collection(obj, collection)
+
+		# Add each vertex to its own vertex group named after the vertgroupnames array
+		for idx in range(len(verts)):
+			groupname = vertgroupnames[idx]
+			vg = obj.vertex_groups.new(name=groupname)
+			vg.add([idx], 1.0, 'ADD')
+		
+		# Assign geometry node
+		geo.object_set_geo_node(obj, geonode_gates)
 
 	# for all unmarked properties, create a new empty object
 	bpy.ops.object.empty_add(type='PLAIN_AXES')
 	obj = bpy.context.active_object
-	obj.name = "_prop_t"
+	obj.name = ".prop_t"
 	move_to_collection(obj, collection_properties)
 	
 	# Assign metadata to the object for each property
 	# TODO: Make sure not to do this for any parent file properties
 	from .prop_base import Hash, ResourceKey
 	for prop in propfile.get_unmarked_properties():
+		if prop.is_key("description"): continue
 		meta_name = prop.type + " " + prop.key
 		if isinstance(prop.value, (Hash, ResourceKey)) or not isinstance(prop.value, (int, float, dict, str, list)):
 			obj[meta_name] = str(prop.value)

@@ -1,3 +1,4 @@
+from gettext import find
 import bpy
 import os
 
@@ -29,8 +30,19 @@ def get_mod_projects_path():
 					return safe_path
 	return ""
 
-# Set the folder name of the current mod
+# Set the folder name of the current mod.
+# will not set if this matches an existing path in the dict
 def set_mod_folder(foldername):
+	# foldername is a full path, find just the part after the projects directory
+	if "\\" in foldername:
+		patharray_folder = foldername.split("\\")
+		projects_base_folder = get_mod_projects_path().split("\\")[:-1][-1]
+		if projects_base_folder in patharray_folder:
+			foldername = patharray_folder[patharray_folder.index(projects_base_folder) + 1]
+
+	for item in paths.values():
+		if item.lower() == foldername.lower():
+			return
 	paths['MOD'] = foldername
 
 def get_spore_data_path(package = 'GAME'):
@@ -42,9 +54,15 @@ def get_spore_data_path(package = 'GAME'):
 			return modspath + package + "\\"
 	return ""
 
-def get_mod_path():
+# Get the path of the current mod, or the path to a manually specified mod.
+# If this does not exist, fallback to the spore data folder.
+# TODO: read the mod dependency paths from the mod config file..?
+def get_mod_path(foldername : str = ""):
 	modspath = get_mod_projects_path()
 	if modspath:
-		if 'MOD' in paths:
+		if foldername:
+			return modspath + foldername + "\\"
+		elif 'MOD' in paths:
 			return modspath + paths['MOD'] + "\\"
+		else: return get_spore_data_path()
 	return ""

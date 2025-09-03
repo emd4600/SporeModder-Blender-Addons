@@ -20,6 +20,9 @@ def create_geonode_turrets():
 def create_geonode_decor():
 	return create_vertex_geonode(name = "Decor", displaytype="SPHERE", scale=(1,1,0))
 
+def create_geonode_gates():
+	return create_vertex_geonode(name = "Gates", scale=(1,1,0.5), offset=(0,0,-0.5))
+
 # Create a geometry node that places "empties" on mesh vertices
 def create_vertex_geonode(name : str, displaytype='CUBE', displaysize=2, scale=(1,1,1), offset=(0,0,0), rotation=(0,0,0)):
 	# Create and return a Geo Node to place Empties on building/tool locations

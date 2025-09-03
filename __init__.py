@@ -1,5 +1,6 @@
 import bpy
 from bpy_extras.io_utils import ImportHelper, ExportHelper
+from . import mod_paths
 from . import addon_updater_ops
 
 
@@ -57,11 +58,25 @@ class Preferences(bpy.types.AddonPreferences):
 		subtype='DIR_PATH',
 		default=""
 	)
+	use_import_folder: bpy.props.BoolProperty(
+		name="Use as Default Import Folder",
+		description="Use Mod Projects Path as the default folder for importing files",
+		default=True
+	)
 
 	def draw(self, context):
 		layout = self.layout
 		layout.prop(self, "mod_projects_path")
+		layout.prop(self, "use_import_folder")
 		addon_updater_ops.update_settings_ui(self, context)
+
+# Helper func
+def using_import_folder():
+	prefs = bpy.context.preferences.addons.get(__package__)
+	if prefs and hasattr(prefs, "preferences"):
+		if prefs.preferences.use_import_folder and prefs.preferences.mod_projects_path:
+			return True
+	return False
 
 #--------------------------------------------------------------------------
 # Import/Export Operators
@@ -73,6 +88,12 @@ class ImportGMDL(bpy.types.Operator, ImportHelper):
 
 	filename_ext = ".gmdl"
 	filter_glob: bpy.props.StringProperty(default="*.gmdl", options={'HIDDEN'})
+
+	def invoke(self, context, event):
+		if using_import_folder():
+			self.filepath = mod_paths.get_mod_path()
+		context.window_manager.fileselect_add(self)
+		return {'RUNNING_MODAL'}
 
 	def execute(self, context):
 		from .gmdl_importer import import_gmdl
@@ -115,6 +136,12 @@ class ImportRW4(bpy.types.Operator, ImportHelper):
 		default="DDS"
 	)
 
+	def invoke(self, context, event):
+		if using_import_folder():
+			self.filepath = mod_paths.get_mod_path()
+		context.window_manager.fileselect_add(self)
+		return {'RUNNING_MODAL'}
+
 	def draw(self, context):
 		layout = self.layout
 
@@ -141,7 +168,6 @@ class ImportRW4(bpy.types.Operator, ImportHelper):
 		with open(self.filepath, 'br') as file:
 			return import_rw4(file, self.filepath, settings)
 
-
 class ExportRW4(bpy.types.Operator, ExportHelper):
 	bl_idname = "export_my_format.rw4"
 	bl_label = "Export RW4"
@@ -164,6 +190,12 @@ class ExportRW4(bpy.types.Operator, ExportHelper):
 		default=False
 	)
 
+	def invoke(self, context, event):
+		if using_import_folder():
+			self.filepath = mod_paths.get_mod_path()
+		context.window_manager.fileselect_add(self)
+		return {'RUNNING_MODAL'}
+
 	def execute(self, context):
 		from .rw4_exporter import export_rw4
 
@@ -184,6 +216,12 @@ class ExportAnim(bpy.types.Operator, ExportHelper):
 	filename_ext = ".anim_t"
 	filter_glob: bpy.props.StringProperty(default="*.anim_t", options={'HIDDEN'})
 
+	def invoke(self, context, event):
+		if using_import_folder():
+			self.filepath = mod_paths.get_mod_path()
+		context.window_manager.fileselect_add(self)
+		return {'RUNNING_MODAL'}
+
 	def execute(self, context):
 		from .anim_exporter import export_anim
 
@@ -198,6 +236,12 @@ class ImportMuscle(bpy.types.Operator, ImportHelper):
 
 	filename_ext = ".prop.prop_t"
 	filter_glob: bpy.props.StringProperty(default="*.prop.prop_t", options={'HIDDEN'})
+
+	def invoke(self, context, event):
+		if using_import_folder():
+			self.filepath = mod_paths.get_mod_path()
+		context.window_manager.fileselect_add(self)
+		return {'RUNNING_MODAL'}
 
 	def execute(self, context):
 		from .muscle_importer import import_muscle_group_or_file
@@ -226,6 +270,8 @@ class ExportMuscle(bpy.types.Operator, ExportHelper):
 	)
 
 	def invoke(self, context, event):
+		if using_import_folder():
+			self.filepath = mod_paths.get_mod_path()
 		context.window_manager.fileselect_add(self)
 		return {'RUNNING_MODAL'}
 
@@ -246,11 +292,17 @@ class ExportMuscle(bpy.types.Operator, ExportHelper):
 
 class ImportCityWall(bpy.types.Operator, ImportHelper):
 	bl_idname = "import_my_format.layout"
-	bl_label = "Import Citystyle Model (.prop.prop_t)"
-	bl_description = "Import a citystyles_model~ or hutstyles community layout .prop.prop_t file"
+	bl_label = "Import City/Tribe Layout (.prop.prop_t)"
+	bl_description = "Import a 'citystyles_model~' or 'hutstyles' layout .prop.prop_t file"
 
 	filename_ext = ".prop.prop_t"
 	filter_glob: bpy.props.StringProperty(default="*.prop.prop_t", options={'HIDDEN'})
+
+	def invoke(self, context, event):
+		if using_import_folder():
+			self.filepath = mod_paths.get_mod_path()
+		context.window_manager.fileselect_add(self)
+		return {'RUNNING_MODAL'}
 
 	def execute(self, context):
 		from .citywall_importer import import_citywall
@@ -283,7 +335,7 @@ def muscle_group_exporter_menu_func(self, context):
 	self.layout.operator(ExportMuscle.bl_idname, text="Spore Limb Muscle (.prop.prop_t)")
 
 def citywall_importer_menu_func(self, context):
-	self.layout.operator(ImportCityWall.bl_idname, text="Spore Citystyle Model (.prop.prop_t)")
+	self.layout.operator(ImportCityWall.bl_idname, text="Spore City/Tribe Layout (.prop.prop_t)")
 
 
 classes = (

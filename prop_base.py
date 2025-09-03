@@ -32,20 +32,31 @@ types = [
 # Classes
 
 class ResourceKey():
-	def __init__(self, instance, group = 0x0, type = 0x0):
+	def __init__(self, instance, group = "", type = ""):
 		self.instance = instance
 		self.group = group
 		self.type = type
 	
 	def __str__(self):
-		if self.group != 0x0:
-			if self.type != 0x0:
+		if self.group != "":
+			if self.type != "":
 				return f"{self.group}!{self.instance}.{self.type}"
 			return f"{self.group}!{self.instance}"
 		else:
-			if self.type != 0x0:
+			if self.type != "":
 				return f"{self.instance}.{self.type}"
 			return f"{self.instance}"
+
+	# Returns the file path for this resource key, given a project name in the SMFX projects folder.
+	# If no project is specified, the default mod project path will be used.
+	def get_file_path(self, project : str = ""):
+		type = self.type
+		folder = self.group
+		if folder == "": folder = "animations~"
+		if type == "prop": type += ".prop_t"
+		if type == "cnv": type += ".cnv_t"
+		return os.path.join(project, f"{self.instance}.{self.type}")
+
 
 class Hash():
 	def __init__(self, value):
@@ -58,7 +69,8 @@ class Hash():
 				# Remove 'hash(' and ')'
 				self.value = get_hash(value[5:-1]) 
 			else:
-				raise ValueError("Unsupported type for Hash value")
+				self.value = get_hash(value)
+				#raise ValueError("Unsupported type for Hash value")
 		elif isinstance(value, int):
 			self.value = value
 		else:
@@ -71,24 +83,32 @@ class Hash():
 	def get(self):
 		return self.value
 
-
 #-----------------------------------------------------------------------------------------
 
 class Property():
 	def __init__(self, key, value, type):
-		self.key : str = key
-		self.value = value
-		self.type : str = type
+		self.key : str = key # property name
+		self.value = value # property value
+		self.type : str = type # value type
 		# Set marked to true when used, so unmarked properties can be filtered.
 		# Also set any properties from the Parent files as marked.
 		self.marked = False
+		# Parent will be true if the property was taken from a parent file.
+		self.parent = False
+
 
 	def kv(self):
 		return [self.key, self.value]
-		
+	
 	def is_key(self, keyname):
 		return self.key.lower() == keyname.lower()
-	
+
+	def is_type(self, type):
+		return self.type.lower() == type.lower()
+
+	def is_list_value(self):
+		return isinstance(self.value, (list))
+
 	def mark(self):
 		self.marked = True
 	
@@ -126,6 +146,7 @@ class PropFile():
 
 		self.properties = {} # name : Property
 		self.read(filepath)
+		#if 'parent' in self.properties:
 
 	# Parse file and load and properties into self.properties
 	def read(self, filepath):
@@ -166,16 +187,36 @@ class PropFile():
 	# Write the properties to a file
 	def write(self, filepath):
 		with open(filepath, "w", encoding="utf-8") as f:
+			self.unmark_all()
+			# Write parent and description first
+			p_parent = self.get_property("parent")
+			p_desc = self.get_property("description")
+			if (p_parent): self._write_prop_line(f, p_parent)
+			if (p_desc): self._write_prop_line(f, p_desc)
+			# Write the rest of the properties
 			for prop in self.properties.items():
-				# list value
-				if isinstance(prop.value, list) and prop.key:
-					f.write(f"{prop.type} {prop.key}")
-					for item in prop.value:
-						f.write(f"\t{item}")
-					f.write("end")
-				# single value
-				else:
-					f.write(f"{prop.type} {prop.key} {prop.value}\n")
+				self._write_prop_line(f, prop)
+
+	def _write_prop_line(self, f, prop, only_unmarked = True):
+		if only_unmarked and prop.marked: return
+		# list value
+		if isinstance(prop.value, list) and prop.key:
+			f.write(f"{prop.type} {prop.key}")
+			for item in prop.value:
+				f.write(f"\t{item}")
+			f.write("end")
+		# single value
+		else:
+			f.write(f"{prop.type} {prop.key} {prop.value}\n")
+		prop.mark()
+
+	def mark_all(self):
+		for prop in self.properties.values():
+			prop.mark()
+	
+	def unmark_all(self):
+		for prop in self.properties.values():
+			prop.unmark()
 
 	# Parse and return [Property(key, value, type), nextline] from a file's lines
 	# start_line is the line to begin reading from. nextline will be the line to read next.
@@ -229,8 +270,11 @@ class PropFile():
 			elif is_type(type, prop_numbers): 
 				values.append(float(item))
 			# uint32 hex
-			elif is_type(type, prop_hash): 
-				values.append(Hash(int(item, 16)))
+			elif is_type(type, prop_hash):
+				if str(item).startswith("hash("):
+					values.append(Hash(value))
+				else:
+					values.append(Hash(int(item, 16)))
 			# vector2, 3, or 4
 			elif is_type(type, prop_vector): 
 				item = item.replace("(", "").replace(")", "").replace(" ", "")
@@ -249,9 +293,9 @@ class PropFile():
 				if len(chunks) == 3:
 					values.append(ResourceKey(chunks[1], chunks[0], chunks[2]))
 				elif len(chunks) == 2:
-					values.append(ResourceKey(chunks[1], chunks[0], 0x0))
+					values.append(ResourceKey(chunks[1], chunks[0], ""))
 				elif len(chunks) == 1:
-					values.append(ResourceKey(chunks[0], 0x0, 0x0))
+					values.append(ResourceKey(chunks[0], "", ""))
 				else:
 					values.append(item)
 			# Transform
@@ -307,22 +351,38 @@ class PropFile():
 		array.sort()
 		return array
 	
+	def get_properties_containing(self, substr):
+		array = [self.properties.get(key.lower()) for key in self.keys() if substr.lower() in key.lower()]
+		array.sort()
+		return array
+	
 	def get_properties_by_type(self, type):
 		array = [prop for prop in self.properties.values() if prop.type == type]
 		array.sort()
 		return array
+
+	#----------------------------
+	# Parent / marked properties
 
 	def get_marked_properties(self):
 		return [prop for prop in self.properties.values() if prop.marked]
 
 	def get_unmarked_properties(self):
 		return [prop for prop in self.properties.values() if not prop.marked]
+	
+	def get_parent_properties(self):
+		return [prop for prop in self.properties.values() if prop.parent]
+
+	def get_nonparent_properties(self):
+		return [prop for prop in self.properties.values() if not prop.parent]
 
 	#--------------------------
 	# Values
 
 	# Get value from key
-	def get_value(self, key):
+	def get_value(self, key, default=None):
+		if key.lower() not in self.properties:
+			return default
 		return self.properties.get(key.lower()).value
 
 	# Get values for multiple keys
