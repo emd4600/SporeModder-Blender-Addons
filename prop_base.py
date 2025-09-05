@@ -224,10 +224,10 @@ class PropFile():
 
 
 	# Parse and return [Property(key, value, type), nextline] from a file's lines
-	# start_line is the line to begin reading from. nextline will be the line to read next.
-	def parse_property(self, lines : list, start_line : int):
-		nextline : int = start_line + 1 # what line to read next.
-		propdata : list[str] = lines[start_line].strip().split() # Line used to define the property, as an array
+	# 'line' is the line to begin reading from. nextline will be the line to read next.
+	def parse_property(self, lines : list, line : int):
+		nextline : int = line + 1 # what line to read for the next call of this func.
+		propdata : list[str] = lines[line].split('#')[0].strip().split() # Line used to define the property, as an array
 
 		if not propdata or len(propdata) < 2:
 			return [None, nextline] # No property data found
@@ -238,13 +238,13 @@ class PropFile():
 
 		# If the propline contains a value after the prop key, use that. Otherwise, look on the next lines.
 		if len(propdata) > 2:
-			value = lines[start_line].strip()
+			value = lines[line].strip()
 			value = re.sub(f"{type}|{key}", '', value).strip()
 			data_array.append(value)
 		else:
 			# Gather the list data until we hit 'end'
 			while nextline < len(lines):
-				line = lines[nextline].strip()
+				line = lines[nextline].split('#')[0].strip()
 				# remove any trailing comments
 				line = re.sub(r'\s*#.*$', '', line)
 
