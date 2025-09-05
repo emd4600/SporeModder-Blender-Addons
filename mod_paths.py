@@ -6,11 +6,12 @@ import os
 
 paths = {
 	'GAME' : "Spore (Game & Graphics)",
-	'Audio' : "Spore Audio",
+	'AUDIO' : "Spore Audio",
 	'BP1' : "BoosterPack_01",
 	'BP2' : "BP2_Data",
 	'EXO' : "Spore_Pack_03",
-	#'MOD' : "",
+	#'MOD' : "Mod",
+	#'IMPORT' : "File/Path/",
 }
 
 def get_mod_projects_path():
@@ -29,6 +30,10 @@ def get_mod_projects_path():
 				if os.path.isdir(safe_path):
 					return safe_path
 	return ""
+
+# Set the folder name of the desired import directory
+def set_import_path(path):
+	paths['IMPORT'] = path
 
 # Set the folder name of the current mod.
 # will not set if this matches an existing path in the dict
@@ -53,6 +58,13 @@ def get_spore_data_path(package = 'GAME'):
 		else:
 			return modspath + package + "\\"
 	return ""
+
+# Get the last import path of the current mod, or the path to a manually specified mod.
+# If this does not exist, fallback to the spore data folder.
+def get_import_path(foldername : str = ""):
+	if 'IMPORT' in paths:
+		return paths['IMPORT']
+	else: return get_spore_data_path()
 
 # Get the path of the current mod, or the path to a manually specified mod.
 # If this does not exist, fallback to the spore data folder.

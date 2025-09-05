@@ -5,13 +5,8 @@ import os
 import re
 from mathutils import Matrix, Vector
 from .prop_base import PropFile
-
-
-def show_message_box(message, title="Import Error", icon='ERROR'):
-	def draw(self, context):
-		self.layout.label(text=message)
-	bpy.context.window_manager.popup_menu(draw, title=title, icon=icon)
-
+from . import mod_paths
+from .message_box import show_message_box
 
 def import_muscle_group(filepath, curve_name, filepath_max=None):
 	"""
@@ -185,6 +180,7 @@ def import_muscle_file(filepath):
 # Automatically detect min and max muscle files,
 # and import min as the base and max as a shape key set.
 def import_muscle_group_or_file(filepath):
+	mod_paths.set_import_path(filepath)
 	"""
 	Import either a muscle file or a muscle group file.
 

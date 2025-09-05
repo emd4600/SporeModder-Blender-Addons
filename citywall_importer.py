@@ -9,7 +9,7 @@ from . import mod_paths
 
 def import_citywall(filepath):
 	print("Importing from:", filepath)
-	mod_paths.set_mod_folder(filepath)
+	mod_paths.set_import_path(filepath)
 
 	from .prop_base import PropFile
 	propfile : PropFile = PropFile(filepath)
@@ -134,13 +134,13 @@ def import_citywall(filepath):
 		move_to_collection(obj, collection)
 
 		# Add each vertex to its own vertex group labeled after its property name + idx
+		if prop.is_key('Buildings'):
+			vg_cityhall = obj.vertex_groups.new(name="City_Hall")
+		vg_prop = obj.vertex_groups.new(name=prop.key)
 		for idx in range(len(verts)):
 			if prop.is_key('Buildings') and idx == 0:
-				name = "CityHall"
-			else: name = prop.key + str(idx)
-
-			vg = obj.vertex_groups.new(name=name)
-			vg.add([idx], 1.0, 'ADD')
+				vg_cityhall.add([idx], 1.0, 'ADD')
+			else: vg_prop.add([idx], 1.0, 'ADD')
 
 		# Assign geometry nodes
 		if prop.is_key('Buildings') or prop.is_key('ToolPositions'):
@@ -158,8 +158,8 @@ def import_citywall(filepath):
 		vertgroupnames = []
 
 		# Set up mesh
-		mesh = bpy.data.meshes.new(prop.key)
-		obj = bpy.data.objects.new(prop.key, mesh)
+		mesh = bpy.data.meshes.new("Gates")
+		obj = bpy.data.objects.new("Gates", mesh)
 		bpy.context.scene.collection.objects.link(obj)
 
 		# Find all gate properties and add to the mesh data
@@ -168,7 +168,7 @@ def import_citywall(filepath):
 				i = 0
 				for item in prop.value:
 					verts.append(item)
-					vertgroupnames.append(prop.key + str(i))
+					vertgroupnames.append(prop.key)
 					i += 1
 			elif prop.is_type('vector3'):
 				verts.append(prop.value)
@@ -183,7 +183,11 @@ def import_citywall(filepath):
 		# Add each vertex to its own vertex group named after the vertgroupnames array
 		for idx in range(len(verts)):
 			groupname = vertgroupnames[idx]
-			vg = obj.vertex_groups.new(name=groupname)
+			# Check if vertex group already exists
+			if groupname in obj.vertex_groups:
+				vg = obj.vertex_groups[groupname]
+			else:
+				vg = obj.vertex_groups.new(name=groupname)
 			vg.add([idx], 1.0, 'ADD')
 		
 		# Assign geometry node

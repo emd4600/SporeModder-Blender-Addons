@@ -91,7 +91,7 @@ class ImportGMDL(bpy.types.Operator, ImportHelper):
 
 	def invoke(self, context, event):
 		if using_import_folder():
-			self.filepath = mod_paths.get_mod_path()
+			self.filepath = mod_paths.get_import_path()
 		context.window_manager.fileselect_add(self)
 		return {'RUNNING_MODAL'}
 
@@ -138,7 +138,7 @@ class ImportRW4(bpy.types.Operator, ImportHelper):
 
 	def invoke(self, context, event):
 		if using_import_folder():
-			self.filepath = mod_paths.get_mod_path()
+			self.filepath = mod_paths.get_import_path()
 		context.window_manager.fileselect_add(self)
 		return {'RUNNING_MODAL'}
 
@@ -239,7 +239,7 @@ class ImportMuscle(bpy.types.Operator, ImportHelper):
 
 	def invoke(self, context, event):
 		if using_import_folder():
-			self.filepath = mod_paths.get_mod_path()
+			self.filepath = mod_paths.get_import_path()
 		context.window_manager.fileselect_add(self)
 		return {'RUNNING_MODAL'}
 
@@ -300,13 +300,33 @@ class ImportCityWall(bpy.types.Operator, ImportHelper):
 
 	def invoke(self, context, event):
 		if using_import_folder():
-			self.filepath = mod_paths.get_mod_path()
+			self.filepath = mod_paths.get_import_path()
 		context.window_manager.fileselect_add(self)
 		return {'RUNNING_MODAL'}
 
 	def execute(self, context):
 		from .citywall_importer import import_citywall
 		return import_citywall(self.filepath)
+
+
+class ExportCityWall(bpy.types.Operator, ExportHelper):
+	bl_idname = "export_my_format.citywall"
+	bl_label = "Export City/Tribe Layout (.prop.prop_t)"
+	bl_description = "Export the city/tribe layout to a .prop.prop_t file"
+
+	filename_ext = ".prop.prop_t"
+	filter_glob: bpy.props.StringProperty(default="*.prop.prop_t", options={'HIDDEN'})
+
+	def invoke(self, context, event):
+		if using_import_folder():
+			self.filepath = mod_paths.get_mod_path()
+		context.window_manager.fileselect_add(self)
+		return {'RUNNING_MODAL'}
+
+	def execute(self, context):
+		from .citywall_exporter import export_citywall
+		export_citywall(self.filepath)
+		return {'FINISHED'}
 
 
 #--------------------------------------------------------------------------
@@ -337,6 +357,9 @@ def muscle_group_exporter_menu_func(self, context):
 def citywall_importer_menu_func(self, context):
 	self.layout.operator(ImportCityWall.bl_idname, text="Spore City/Tribe Layout (.prop.prop_t)")
 
+def citywall_exporter_menu_func(self, context):
+	self.layout.operator(ExportCityWall.bl_idname, text="Spore City/Tribe Layout (.prop.prop_t)")
+
 
 classes = (
 	Preferences,
@@ -347,6 +370,7 @@ classes = (
 	ImportMuscle,
 	ExportMuscle,
 	ImportCityWall,
+	ExportCityWall,
 )
 
 
@@ -369,6 +393,7 @@ def register():
 	bpy.types.TOPBAR_MT_file_import.append(muscle_group_importer_menu_func)
 	bpy.types.TOPBAR_MT_file_export.append(muscle_group_exporter_menu_func)
 	bpy.types.TOPBAR_MT_file_import.append(citywall_importer_menu_func)
+	bpy.types.TOPBAR_MT_file_export.append(citywall_exporter_menu_func)
 
 
 def unregister():
@@ -388,6 +413,7 @@ def unregister():
 	bpy.types.TOPBAR_MT_file_import.remove(muscle_group_importer_menu_func)
 	bpy.types.TOPBAR_MT_file_export.remove(muscle_group_exporter_menu_func)
 	bpy.types.TOPBAR_MT_file_import.remove(citywall_importer_menu_func)
+	bpy.types.TOPBAR_MT_file_export.remove(citywall_exporter_menu_func)
 
 
 if __name__ == "__main__":

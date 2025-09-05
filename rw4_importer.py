@@ -8,14 +8,7 @@ import math
 import bpy
 import os
 from collections import OrderedDict
-
-
-def show_message_box(message: str, title: str, icon='ERROR'):
-	def draw(self, context):
-		self.layout.label(text=message)
-
-	bpy.context.window_manager.popup_menu(draw, title=title, icon=icon)
-
+from .message_box import show_message_box
 
 def vec_roll_to_mat3(vec, roll):
 	target = Vector((0, 0.1, 0))

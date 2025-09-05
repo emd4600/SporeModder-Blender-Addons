@@ -1,14 +1,7 @@
 import bpy
 import mathutils
-from . import anim_bone_config
-
-
-def show_message_box(message: str, title: str, icon='ERROR'):
-	def draw(self, context):
-		self.layout.label(text=message)
-
-	bpy.context.window_manager.popup_menu(draw, title=title, icon=icon)
-
+from . import anim_bone_config, mod_paths
+from .message_box import show_message_box
 
 def requirements_to_string(item):
 	text = ''
@@ -298,6 +291,7 @@ def export_anim(file):
 	if not bpy.data.armatures:
 		show_message_box("Must have an armature to export an animation", "Error")
 		return {'CANCELLED'}
+	mod_paths.set_mod_folder(file)
 
 	armature = bpy.data.armatures[0]
 	armature_object = next(x for x in bpy.data.objects if x.name == armature.name)

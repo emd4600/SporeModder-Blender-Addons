@@ -1,8 +1,7 @@
 __author__ = 'Allison'
 
 from operator import ne
-import re, os
-import string
+import os, re
 from .file_io import get_hash
 
 prop_bool = ["bool"]
@@ -113,7 +112,7 @@ class Property():
 		self.marked = True
 	
 	def unmark(self):
-		self.marked = True
+		self.marked = False
 
 	def set_marked(self, marked):
 		self.marked = marked
@@ -139,14 +138,14 @@ class Property():
 
 
 class PropFile():
-	def __init__(self, filepath):
+	def __init__(self, filepath, write = False):
 		self.filepath = filepath
 		self.key = os.path.basename(filepath).split('.')[0] # Filename sans extension
 		self.directory = os.path.dirname(filepath) # Directory path
 
-		self.properties = {} # name : Property
-		self.read(filepath)
-		#if 'parent' in self.properties:
+		self.properties = {}
+		if (not write and filepath and os.path.isfile(filepath)):
+			self.read(filepath)
 
 	# Parse file and load and properties into self.properties
 	def read(self, filepath):
@@ -184,32 +183,6 @@ class PropFile():
 			elif mode == 'REPLACE':
 				self.properties[key] = property
 
-	# Write the properties to a file
-	def write(self, filepath):
-		with open(filepath, "w", encoding="utf-8") as f:
-			self.unmark_all()
-			# Write parent and description first
-			p_parent = self.get_property("parent")
-			p_desc = self.get_property("description")
-			if (p_parent): self._write_prop_line(f, p_parent)
-			if (p_desc): self._write_prop_line(f, p_desc)
-			# Write the rest of the properties
-			for prop in self.properties.items():
-				self._write_prop_line(f, prop)
-
-	def _write_prop_line(self, f, prop, only_unmarked = True):
-		if only_unmarked and prop.marked: return
-		# list value
-		if isinstance(prop.value, list) and prop.key:
-			f.write(f"{prop.type} {prop.key}")
-			for item in prop.value:
-				f.write(f"\t{item}")
-			f.write("end")
-		# single value
-		else:
-			f.write(f"{prop.type} {prop.key} {prop.value}\n")
-		prop.mark()
-
 	def mark_all(self):
 		for prop in self.properties.values():
 			prop.mark()
@@ -218,11 +191,43 @@ class PropFile():
 		for prop in self.properties.values():
 			prop.unmark()
 
+	# Write the properties to a file
+	def write(self, filepath):
+		with open(filepath, "w", encoding="utf-8") as f:
+			self.unmark_all()
+			self.sort()
+			for prop in self.properties.values():
+				self._write_prop_line(f, prop)
+
+	def _write_prop_line(self, f, prop, only_unmarked=True):
+		# Always write, don't skip based on marked
+		if (only_unmarked and prop.marked):
+			return
+
+		def round_value(value):
+			if isinstance(value, float):
+				value = round(value, 6)
+			elif isinstance(value, (list, tuple)):
+				value = [round(v, 6) for v in value if isinstance(v, float)]
+				return f"({', '.join(str(v) for v in value)})"
+			return value
+
+		# list value
+		if isinstance(prop.value, list):
+			f.write(f"{prop.type} {prop.key}\n")
+			for item in prop.value:
+				f.write(f"\t{round_value(item)}\n")
+			f.write("end\n")
+		else:
+			f.write(f"{prop.type} {prop.key} {round_value(prop.value)}\n")
+		prop.mark()
+
+
 	# Parse and return [Property(key, value, type), nextline] from a file's lines
 	# start_line is the line to begin reading from. nextline will be the line to read next.
 	def parse_property(self, lines : list, start_line : int):
 		nextline : int = start_line + 1 # what line to read next.
-		propdata : list[str] = lines[start_line].strip().split() # Line used to define the property, as lowercase array
+		propdata : list[str] = lines[start_line].strip().split() # Line used to define the property, as an array
 
 		if not propdata or len(propdata) < 2:
 			return [None, nextline] # No property data found
@@ -233,13 +238,13 @@ class PropFile():
 
 		# If the propline contains a value after the prop key, use that. Otherwise, look on the next lines.
 		if len(propdata) > 2:
-			value = lines[start_line].strip().lower()
-			value = re.sub(f"{type}|{key.lower()}", '', value).strip()
+			value = lines[start_line].strip()
+			value = re.sub(f"{type}|{key}", '', value).strip()
 			data_array.append(value)
 		else:
 			# Gather the list data until we hit 'end'
 			while nextline < len(lines):
-				line = lines[nextline].strip().lower()
+				line = lines[nextline].strip()
 				# remove any trailing comments
 				line = re.sub(r'\s*#.*$', '', line)
 
@@ -289,15 +294,16 @@ class PropFile():
 				values.append(item)
 			# Resource Key
 			elif is_type(type, prop_key):
-				chunks = re.split(r'[!.]', item)
-				if len(chunks) == 3:
-					values.append(ResourceKey(chunks[1], chunks[0], chunks[2]))
-				elif len(chunks) == 2:
-					values.append(ResourceKey(chunks[1], chunks[0], ""))
-				elif len(chunks) == 1:
-					values.append(ResourceKey(chunks[0], "", ""))
-				else:
-					values.append(item)
+				chunk_group = item.split(".")[0].split("!")
+				chunks_inst_type = item.split("!")[-1].split(".")
+				reskey = ResourceKey(chunks_inst_type[0])
+
+				if (len(chunk_group) == 2):
+					reskey.group = chunk_group[0]
+				if (len(chunks_inst_type) == 2):
+					reskey.type = chunks_inst_type[1]
+
+				values.append(reskey)
 			# Transform
 			elif is_type(type, prop_transform): # format -offset (0, 0, 0) -scale 1 -rotateXYZ 0 -0 0
 				values.append(item)
@@ -330,8 +336,26 @@ class PropFile():
 	def size(self):
 		return len(self.properties)
 
+	def sort(self):
+		# Custom sort order: parent, description, blockName, then natural sort for the rest
+		def sort_key(prop: Property):
+			if prop.is_key("parent"):
+				return (0, "")
+			elif prop.is_key("description"):
+				return (1, "")
+			elif prop.is_key("blockname"):
+				return (2, "")
+			else:
+				return (3, prop._natural_sort_key())
+		sorted_props = sorted(self.properties.values(), key=sort_key)
+		self.properties = {prop.key.lower(): prop for prop in sorted_props}
+
+
 	#--------------------------
 	# Properties
+
+	def add_property(self, property: Property):
+		self.properties[property.key.lower()] = property
 
 	def get_all_properties(self):
 		return [self.properties.get(key.lower()) for key in self.keys()]
@@ -399,4 +423,4 @@ class PropFile():
 	# Get [key, value]s for multiple keys
 	def get_keyvalues(self, keys):
 		return [[key, self.properties.get(key.lower()).value] for key in keys]
-
+		return [[key, self.properties.get(key.lower()).value] for key in keys]

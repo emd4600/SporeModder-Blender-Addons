@@ -2,7 +2,7 @@ import bpy
 import ntpath
 import os
 from .file_io import FileReader, ResourceKey
-from . import rw4_enums
+from . import rw4_enums, mod_paths
 
 
 SHADER_DATA_SIZES = {
@@ -235,6 +235,7 @@ def import_textures(b_mesh, filepath):
 
 
 def import_gmdl(file, import_skeleton, filepath):
+	mod_paths.set_import_path(filepath)
 	result = {'FINISHED'}
 
 	gmdl = SporeGameModel()
