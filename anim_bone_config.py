@@ -30,7 +30,7 @@ ANIMATION_NAMES = {
 	'root': ('Scale', 'Data1', 'Data2', 'Data3', 'Data4', 'Data5'),
 	'grsp': ('ClsdOpen', 'Point'),
 	'slsh': ('TurnOn',),
-	'wing': ('Tuck', 'wing_Bend'),
+	'wing': ('Tuck', 'wing_Bend', 'Bend', 'Flap', 'BigFlap'),
 	'foot': ('Bend',)
 }
 

@@ -224,6 +224,8 @@ SPORE_NAMES = {
 	0x30EE8F49: 'Scared',
 	0xAC04E296: 'Tuck',
 	0x47F0B3DC: 'Bend',
+	0xAEB95D4C: 'Flap',
+	0x7E3505E4: 'BigFlap',
 	0x39E912E1: 'DroopRaise',
 	0x70E47545: 'Scale',
 	0x98C942B6: 'Data1',
