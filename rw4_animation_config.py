@@ -372,7 +372,7 @@ class SPORE_OT_generate_morph_nudge(bpy.types.Operator):
 				armature_obj = armatures[0]
 
 		if not armature_obj:
-			self.report({'ERROR'}, "No armature found.")
+			self.report({'ERROR'}, "An armature must be selected to generate nudge morph.")
 			return {'CANCELLED'}
 
 		# Store the root bone of the armature for later use
@@ -459,16 +459,17 @@ class SPORE_PT_rw_anims(bpy.types.Panel):
 	def draw(self, context):
 		self.layout.use_property_split = True
 
+		# Generate Nudge Morph button
+		has_armature = any(obj.type == 'ARMATURE' for obj in bpy.context.scene.objects)
+		has_nudge_action = any(action.name == "Nudge" for action in bpy.data.actions)
+		if has_armature and not has_nudge_action:
+			self.layout.operator("action.auto_morph_nudge", text="Generate Nudge Morph")
+
 		self.layout.template_list("SPORE_UL_rw_anims", "The_List", bpy.data, "actions", context.scene, "rw4_list_index")
 
 		if bpy.data.actions:
 			item = bpy.data.actions[context.scene.rw4_list_index].rw4
 			self.layout.prop(item, 'is_morph_handle')
-
-			has_armature = any(obj.type == 'ARMATURE' for obj in bpy.context.scene.objects)
-			has_nudge_action = any(action.name == "Nudge" for action in bpy.data.actions)
-			if has_armature and not has_nudge_action:
-				self.layout.operator("action.auto_morph_nudge", text="Generate Nudge Morph")
 
 			if item.is_morph_handle:
 				self.layout.operator("action.auto_rw_handle", text="Automatic Positions")
