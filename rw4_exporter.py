@@ -675,6 +675,36 @@ class RW4Exporter:
 		self.blend_shape.shape_ids_index = \
 			self.render_ware.add_sub_reference(self.blend_shape, 0x1C + len(self.blend_shape.shape_ids) * 4)
 
+	def check_skinpaint_uv_bounds(self, obj, mesh, warnings):
+		"""
+		Checks if the given mesh uses any skinpaint material, and if so, checks that all UV coordinates
+		are in the 0.0-1.0 range. If any UV is out of bounds, a warning is added to the warnings set.
+
+		:param obj: The Blender mesh object.
+		:param mesh: The triangulated Blender mesh.
+		:param warnings: A set of warnings strings.
+		"""
+		if not obj.material_slots:
+			return
+
+		uv_layer = mesh.uv_layers.active
+		if uv_layer is None:
+			return
+
+		for blender_material in obj.material_slots:
+			material_data = blender_material.material.rw4
+			active_material = rw4_material_config.get_active_material(material_data)
+			is_skinpaint = active_material.material_data.material_name == "SkinPaint Part"
+			if active_material is not None and is_skinpaint:
+				for uv in uv_layer.data:
+					u, v = uv.uv[0], uv.uv[1]
+					if u < 0.0 or u > 1.0 or v < 0.0 or v > 1.0:
+						error = f"Mesh '{obj.name}' uses a skinpaint material but has out of bounds UV coordinates. Texture painting will not work correctly."
+						if error not in warnings:
+							warnings.add(error)
+						break
+
+
 	def export_mesh_object(self, obj):
 		"""
 		Exports a Blender mesh into the RW4.
@@ -731,6 +761,9 @@ class RW4Exporter:
 			error = rw4_validation.error_no_texcoord(obj)
 			if error not in self.warnings:
 				self.warnings.add(error)
+
+		# UV out-of-bounds check for skinpaint materials
+		self.check_skinpaint_uv_bounds(obj, blender_mesh, self.warnings)
 
 		# For each object, create a vertex and index buffer
 
