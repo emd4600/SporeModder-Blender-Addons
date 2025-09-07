@@ -1,3 +1,5 @@
+__author__ = 'Allison'
+
 import bpy
 import os
 import re
