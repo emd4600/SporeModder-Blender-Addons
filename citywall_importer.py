@@ -149,6 +149,8 @@ def import_citywall(filepath):
 			geo.object_set_geo_node(obj, geonode_turrets)
 		elif prop.is_key('Decorations'):
 			geo.object_set_geo_node(obj, geonode_decor)
+		elif prop.is_key('TribeChatAreas'):
+			geo.object_set_geo_node(obj, geonode_decor)
 
 	# Handle gates as one mesh.
 	if (True):

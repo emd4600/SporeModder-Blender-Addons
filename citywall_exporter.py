@@ -102,6 +102,9 @@ def export_mesh_properties(obj, propfile):
 		assigned_verts = [v for v in verts if vg.index in [g.group for g in v.groups]]
 		if len(assigned_verts) > 1:
 			positions = [tuple(obj.matrix_world @ v.co) for v in assigned_verts]
+			# set all Z values to 5 for TribeChatAreas
+			if (name.lower() == "tribechatareas"):
+				positions = [(x, y, 5) for (x, y, z) in positions]
 			group_vectors[name] = positions
 		elif len(assigned_verts) == 1:
 			pos = tuple(obj.matrix_world @ assigned_verts[0].co)
