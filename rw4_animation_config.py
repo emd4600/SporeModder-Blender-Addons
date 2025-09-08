@@ -479,7 +479,7 @@ class SPORE_PT_rw_anims(bpy.types.Panel):
 				self.layout.prop(item, 'final_pos')
 				self.layout.prop(item, 'default_progress')
 		
-
+_draw_handler = None
 def register():
 	bpy.utils.register_class(SPORE_OT_auto_handles)
 	bpy.utils.register_class(SPORE_OT_generate_morph_nudge)
@@ -488,11 +488,15 @@ def register():
 	bpy.utils.register_class(SPORE_PT_rw_anims)
 	bpy.types.Scene.rw4_list_index = IntProperty(name="Index for rw4_list", default=0)  # , update=update_action_list)
 
-	bpy.types.SpaceView3D.draw_handler_add(handle_draw_callback, (), 'WINDOW', 'POST_VIEW')
+	global _draw_handler
+	_draw_handler = bpy.types.SpaceView3D.draw_handler_add(handle_draw_callback, (), 'WINDOW', 'POST_VIEW')
 
 
 def unregister():
-	bpy.types.SpaceView3D.draw_handler_remove(handle_draw_callback, 'WINDOW')
+	global _draw_handler
+	if _draw_handler is not None:
+		bpy.types.SpaceView3D.draw_handler_remove(_draw_handler, 'WINDOW')
+		_draw_handler = None
 
 	bpy.utils.unregister_class(SPORE_PT_rw_anims)
 	bpy.utils.unregister_class(RW4AnimProperties)

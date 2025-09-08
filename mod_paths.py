@@ -14,6 +14,13 @@ paths = {
 	#'IMPORT' : "File/Path/",
 }
 
+def using_import_folder():
+	prefs = bpy.context.preferences.addons.get(__package__)
+	if prefs and hasattr(prefs, "preferences"):
+		if prefs.preferences.use_import_folder and prefs.preferences.mod_projects_path:
+			return True
+	return False
+
 def get_mod_projects_path():
 	addon_name = __package__ if __package__ else "SporeModder-Blender-Addons"
 	prefs = bpy.context.preferences.addons.get(addon_name)
@@ -33,11 +40,17 @@ def get_mod_projects_path():
 
 # Set the folder name of the desired import directory
 def set_import_path(path):
-	paths['IMPORT'] = path
+	paths['IMPORT'] = path.split('.')[0]
+
+# Set the folder name of the desired export directory
+def set_export_path(path):
+	set_mod_folder(os.path.dirname(path))
+	paths['EXPORT'] = path.split('.')[0]
 
 # Set the folder name of the current mod.
 # will not set if this matches an existing path in the dict
 def set_mod_folder(foldername):
+	foldername = foldername.split('.')[0]
 	# foldername is a full path, find just the part after the projects directory
 	if "\\" in foldername:
 		patharray_folder = foldername.split("\\")
@@ -63,18 +76,29 @@ def get_spore_data_path(package = 'GAME'):
 # If this does not exist, fallback to the spore data folder.
 def get_import_path(foldername : str = ""):
 	if 'IMPORT' in paths:
-		return paths['IMPORT']
-	else: return get_spore_data_path()
+		return paths['IMPORT'].split('.')[0]
+	else: return get_spore_data_path().split('.')[0]
+
+# Get the last export path of the current mod, or the path to a manually specified mod.
+# If this does not exist, fallback to the mod path.
+def get_export_path(foldername : str = "", file : str = "", ext : str = ""):
+	print(paths)
+	if 'EXPORT' in paths:
+		return paths['EXPORT'].split('.')[0]
+	elif using_import_folder():
+		return get_mod_path(foldername, file, ext)
+	else: return file.split('.')[0] + ext
 
 # Get the path of the current mod, or the path to a manually specified mod.
 # If this does not exist, fallback to the spore data folder.
 # TODO: read the mod dependency paths from the mod config file..?
-def get_mod_path(foldername : str = ""):
+def get_mod_path(foldername : str = "", file : str = "", ext : str = ""):
 	modspath = get_mod_projects_path()
+	path = ""
 	if modspath:
 		if foldername:
-			return modspath + foldername + "\\"
+			path = modspath + foldername + "\\"
 		elif 'MOD' in paths:
-			return modspath + paths['MOD'] + "\\"
-		else: return get_spore_data_path()
-	return ""
+			path = modspath + paths['MOD'] + "\\"
+		else: path = get_spore_data_path()
+	return path + os.path.basename(file).split('.')[0] + ext

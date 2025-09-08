@@ -2,6 +2,7 @@ import bpy
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 from . import mod_paths
 from . import addon_updater_ops
+import os
 
 
 bl_info = {
@@ -70,14 +71,6 @@ class Preferences(bpy.types.AddonPreferences):
 		layout.prop(self, "use_import_folder")
 		addon_updater_ops.update_settings_ui(self, context)
 
-# Helper func
-def using_import_folder():
-	prefs = bpy.context.preferences.addons.get(__package__)
-	if prefs and hasattr(prefs, "preferences"):
-		if prefs.preferences.use_import_folder and prefs.preferences.mod_projects_path:
-			return True
-	return False
-
 #--------------------------------------------------------------------------
 # Import/Export Operators
 
@@ -90,7 +83,8 @@ class ImportGMDL(bpy.types.Operator, ImportHelper):
 	filter_glob: bpy.props.StringProperty(default="*.gmdl", options={'HIDDEN'})
 
 	def invoke(self, context, event):
-		if using_import_folder():
+		self.filepath = bpy.data.filepath.split('.')[0]
+		if mod_paths.using_import_folder():
 			self.filepath = mod_paths.get_import_path()
 		context.window_manager.fileselect_add(self)
 		return {'RUNNING_MODAL'}
@@ -137,7 +131,8 @@ class ImportRW4(bpy.types.Operator, ImportHelper):
 	)
 
 	def invoke(self, context, event):
-		if using_import_folder():
+		self.filepath = bpy.data.filepath.split('.')[0]
+		if mod_paths.using_import_folder():
 			self.filepath = mod_paths.get_import_path()
 		context.window_manager.fileselect_add(self)
 		return {'RUNNING_MODAL'}
@@ -191,8 +186,7 @@ class ExportRW4(bpy.types.Operator, ExportHelper):
 	)
 
 	def invoke(self, context, event):
-		if using_import_folder():
-			self.filepath = mod_paths.get_mod_path()
+		self.filepath = mod_paths.get_export_path(file = bpy.data.filepath, ext = self.filename_ext)
 		context.window_manager.fileselect_add(self)
 		return {'RUNNING_MODAL'}
 
@@ -200,6 +194,7 @@ class ExportRW4(bpy.types.Operator, ExportHelper):
 		from .rw4_exporter import export_rw4
 
 		with open(self.filepath, 'bw') as file:
+			mod_paths.set_export_path(self.filepath)
 			return export_rw4(file, self.export_symmetric, self.export_as_lod1)
 
 	def draw(self, context):
@@ -217,8 +212,7 @@ class ExportAnim(bpy.types.Operator, ExportHelper):
 	filter_glob: bpy.props.StringProperty(default="*.anim_t", options={'HIDDEN'})
 
 	def invoke(self, context, event):
-		if using_import_folder():
-			self.filepath = mod_paths.get_mod_path()
+		self.filepath = mod_paths.get_export_path(file = bpy.data.filepath, ext = self.filename_ext)
 		context.window_manager.fileselect_add(self)
 		return {'RUNNING_MODAL'}
 
@@ -226,6 +220,7 @@ class ExportAnim(bpy.types.Operator, ExportHelper):
 		from .anim_exporter import export_anim
 
 		with open(self.filepath, 'w') as file:
+			mod_paths.set_export_path(self.filepath)
 			return export_anim(file)
 
 
@@ -238,7 +233,8 @@ class ImportMuscle(bpy.types.Operator, ImportHelper):
 	filter_glob: bpy.props.StringProperty(default="*.prop.prop_t", options={'HIDDEN'})
 
 	def invoke(self, context, event):
-		if using_import_folder():
+		self.filepath = bpy.data.filepath.split('.')[0]
+		if mod_paths.using_import_folder():
 			self.filepath = mod_paths.get_import_path()
 		context.window_manager.fileselect_add(self)
 		return {'RUNNING_MODAL'}
@@ -259,6 +255,7 @@ class ExportMuscle(bpy.types.Operator, ExportHelper):
 	bl_label = "Export Muscle (.prop.prop_t)"
 	bl_description = "Export selected muscle to Muscle_ and Group_ .prop.prop_t files"
 
+	filename_ext = ".prop.prop_t"
 	directory: bpy.props.StringProperty(subtype='DIR_PATH')
 
 	# Checkbox to export a mirrored version
@@ -270,8 +267,7 @@ class ExportMuscle(bpy.types.Operator, ExportHelper):
 	)
 
 	def invoke(self, context, event):
-		if using_import_folder():
-			self.filepath = mod_paths.get_mod_path()
+		self.filepath = mod_paths.get_export_path(file = bpy.data.filepath, ext = self.filename_ext)
 		context.window_manager.fileselect_add(self)
 		return {'RUNNING_MODAL'}
 
@@ -283,6 +279,7 @@ class ExportMuscle(bpy.types.Operator, ExportHelper):
 		from .muscle_exporter import export_muscle
 
 		with open(self.filepath, 'bw') as file:
+			mod_paths.set_export_path(self.filepath)
 			return export_muscle(self.directory, self.export_symmetric)
 
 	def draw(self, context):
@@ -299,7 +296,8 @@ class ImportCityWall(bpy.types.Operator, ImportHelper):
 	filter_glob: bpy.props.StringProperty(default="*.prop.prop_t", options={'HIDDEN'})
 
 	def invoke(self, context, event):
-		if using_import_folder():
+		self.filepath = bpy.data.filepath.split('.')[0]
+		if mod_paths.using_import_folder():
 			self.filepath = mod_paths.get_import_path()
 		context.window_manager.fileselect_add(self)
 		return {'RUNNING_MODAL'}
@@ -318,13 +316,13 @@ class ExportCityWall(bpy.types.Operator, ExportHelper):
 	filter_glob: bpy.props.StringProperty(default="*.prop.prop_t", options={'HIDDEN'})
 
 	def invoke(self, context, event):
-		if using_import_folder():
-			self.filepath = mod_paths.get_mod_path()
+		self.filepath = mod_paths.get_export_path(file = bpy.data.filepath, ext = self.filename_ext)
 		context.window_manager.fileselect_add(self)
 		return {'RUNNING_MODAL'}
 
 	def execute(self, context):
 		from .citywall_exporter import export_citywall
+		mod_paths.set_export_path(self.filepath)
 		export_citywall(self.filepath)
 		return {'FINISHED'}
 
@@ -397,6 +395,8 @@ def register():
 
 
 def unregister():
+	addon_updater_ops.unregister()
+
 	from . import rw4_material_config, rw4_animation_config, anim_bone_config
 
 	rw4_material_config.unregister()
