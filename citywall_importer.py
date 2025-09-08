@@ -8,7 +8,6 @@ from . import mod_paths
 # Also store other imported paramters for export, maybe as metadata or empty objects
 
 def import_citywall(filepath):
-	print("Importing from:", filepath)
 	mod_paths.set_import_path(filepath)
 
 	from .prop_base import PropFile

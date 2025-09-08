@@ -9,6 +9,7 @@ import bpy
 import os
 from collections import OrderedDict
 from .message_box import show_message_box
+from . import mod_paths
 
 def vec_roll_to_mat3(vec, roll):
 	target = Vector((0, 0.1, 0))
@@ -118,6 +119,8 @@ class RW4Importer:
 		self.b_animation_actions = []
 		self.base_bones = []
 		self.animation_bones = {}  # maps ID to list of channels, which are lists of PoseBone keyframes
+
+		mod_paths.set_import_path(filepath)
 
 	def process(self):
 		if self.settings.import_skeleton:

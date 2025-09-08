@@ -85,7 +85,6 @@ class StaticModel(RWMaterial):
 		if exporter.has_skeleton() or exporter.is_blend_shape(): material.shader_id = 0x80000004
 		else: material.shader_id = 0x80000002
 		material.unknown_booleans.append(True)
-		material.unknown_booleans.append(True)  # the rest are going to be False
 
 		if material.shader_id == 0x80000004:
 			material.FLAG3_RENDER_STATES = 0xc0000
@@ -146,9 +145,6 @@ class StaticModel(RWMaterial):
 
 		if material.shader_id != 0x80000002 and material.shader_id != 0x80000004: #not (material.shader_id == 0x80000004 and material.rw4.material_data_StaticModel.normal_texture):
 			return False
-
-		for data in material.shader_data:
-			print(data)
 
 		# sh_data = material.get_shader_data(0x218)
 		# if sh_data is None or sh_data.data is None or len(sh_data.data) != 4:
