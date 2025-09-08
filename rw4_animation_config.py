@@ -224,8 +224,10 @@ class RW4AnimProperties(bpy.types.PropertyGroup):
 	def unregister(cls):
 		del bpy.types.Action.rw4
 
-
-shader = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
+if bpy.app.version[0] == 4:
+	shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+else:
+	shader = gpu.shader.from_builtin('3D_UNIFORM_COLOR')
 BOX_COORDS = [
 		(-0.5, -0.5, +1), (+0.5, -0.5, +1),
 		(+0.5, +0.5, +1), (-0.5, +0.5, +1),
