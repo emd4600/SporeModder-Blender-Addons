@@ -154,6 +154,9 @@ class RenderWare4:
 		else:
 			raise NameError("Unsupported index %x" % index)
 
+	def get_handles(self):
+		return [x for x in self.objects if x is not None and x.type_code == MorphHandle.type_code]
+
 	def get_index(self, rw_object, index_type=INDEX_OBJECT):
 		if index_type == INDEX_OBJECT:
 			if rw_object is None:
