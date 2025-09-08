@@ -675,6 +675,36 @@ class RW4Importer:
 
 		return b_action
 
+	def add_nla_strips(self):
+		if (self.b_armature_object or self.b_mesh_objects) and self.b_animation_actions:
+			# Add NLA strips for armature actions
+			if not self.b_armature_object.animation_data:
+				self.b_armature_object.animation_data_create()
+			nla_tracks = self.b_armature_object.animation_data.nla_tracks
+			for action in self.b_animation_actions:
+				if action.id_root != 'KEY':
+					# Avoid duplicate strips for the same action
+					if not any(strip.action == action for track in nla_tracks for strip in track.strips):
+						track = nla_tracks.new()
+						track.name = action.name
+						# Use the action frame range for the strip
+						start, end = action.frame_range
+						strip = track.strips.new(action.name, int(start), action)
+			# Add NLA strips for shape key actions
+			for b_object in self.b_mesh_objects:
+				if not b_object.data.shape_keys:
+					continue
+				if not b_object.data.shape_keys.animation_data:
+					b_object.data.shape_keys.animation_data_create()
+				nla_tracks = b_object.data.shape_keys.animation_data.nla_tracks
+				for action in self.b_animation_actions:
+					if action.id_root == 'KEY':
+						if not any(strip.action == action for track in nla_tracks for strip in track.strips):
+							track = nla_tracks.new()
+							track.name = action.name
+							start, end = action.frame_range
+							strip = track.strips.new(action.name, int(start), action)
+
 	def import_animations(self):
 		anim_objects = self.render_ware.get_objects(rw4_base.Animations.type_code)
 		handle_objects = self.render_ware.get_objects(rw4_base.MorphHandle.type_code)
@@ -709,6 +739,8 @@ class RW4Importer:
 			self.import_animation(handle.animation, self.b_animation_actions[i + anim_count])
 
 		bpy.context.scene.frame_set(0)
+
+		self.add_nla_strips()
 
 
 def import_rw4(file, filepath, settings):

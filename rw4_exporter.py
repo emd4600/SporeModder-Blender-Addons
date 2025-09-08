@@ -1144,13 +1144,9 @@ class RW4Exporter:
 		# NOTE: As of v 2.7, this allows for armatures and shape keys with the same name
 		# to be combined into one KeyframeAnim.
 		actions = bpy.data.actions
-		used_actions = []
 		for action in actions:
 			if not action.fcurves:
 				continue
-			if action.name in used_actions: continue
-			used_actions.append(action.name)
-
 			if action.frame_range[0] != 0:
 				error = rw4_validation.error_action_start_frame(action)
 				if error not in self.warnings:
@@ -1211,8 +1207,6 @@ class RW4Exporter:
 				# If the animation does not use any of our meshes, then it's in another collection and we can ignore it
 				if self.b_shape_keys_actions[action] not in self.b_mesh_objects:
 					continue
-
-			print(f"Exporting action {action.name.split('.')[0]} from {action.name}...")
 
 			if is_shape_key and self.blend_shape is not None or self.b_armature_object is not None:
 				skeleton_id = self.blend_shape.id if is_shape_key else file_io.get_hash(self.b_armature_object.name)
@@ -1379,6 +1373,7 @@ def export_rw4(file, export_symmetric, export_as_lod1):
 			for mod in obj.modifiers:
 				if mod.type == 'ARMATURE' and mod.object is not None:
 					mesh_count += 1
+	print(f"Detected {mesh_count} meshes with armature modifiers.")
 
 	# TODO: create a list of ignored animations to not throw errors for on export?
 	# AKA the muted ones and any from other meshes
@@ -1387,7 +1382,6 @@ def export_rw4(file, export_symmetric, export_as_lod1):
 	valid_meshes = []
 	ignored_actions = [] # ignore these on export without throwing an error
 
-	used_actions = []
 	# For collections, we need to know what each action animates
 	for obj in bpy.context.scene.collection.all_objects:
 		# cannot export object, add its actions to ignored.
@@ -1411,15 +1405,11 @@ def export_rw4(file, export_symmetric, export_as_lod1):
 			if ad:
 				valid_armatures.append(obj)
 				if ad.action:
-					if ad.action.name in used_actions: continue
-					used_actions.append(ad.action.name)
 					exporter.b_armature_actions[ad.action] = obj
 					if ad.action in ignored_actions: ignored_actions.remove(ad.action)
 				# If there is only one mesh/armature, we can assume it uses all actions except those marked null
 				if mesh_count == 1:
 					for action in bpy.data.actions:
-						if action.name in used_actions: continue
-						used_actions.append(action.name)
 						# Disallow null actions
 						if action in exporter.b_armature_actions and exporter.b_armature_actions[action].name.lower().startswith("null"):
 							ignored_actions.append(action)
@@ -1433,8 +1423,6 @@ def export_rw4(file, export_symmetric, export_as_lod1):
 						# Only export from non-muted/checked tracks
 						if not t.mute:
 							for s in t.strips:
-								if s.action.name in used_actions: continue
-								used_actions.append(s.action.name)
 								exporter.b_armature_actions[s.action] = obj
 								if s.action in ignored_actions: ignored_actions.remove(s.action)
 								continue
@@ -1449,15 +1437,11 @@ def export_rw4(file, export_symmetric, export_as_lod1):
 			if obj.data.shape_keys and obj.data.shape_keys.animation_data:
 				ad = obj.data.shape_keys.animation_data
 				if ad.action:
-					if ad.action.name in used_actions: continue
-					used_actions.append(ad.action.name)
 					exporter.b_shape_keys_actions[ad.action] = obj
 					if ad.action in ignored_actions: ignored_actions.remove(ad.action)
 				# One mesh/armature, pull actions
 				if mesh_count == 1:
 					for action in bpy.data.actions:
-						if action.name in used_actions: continue
-						used_actions.append(action.name)
 						# Disallow null actions
 						if action in exporter.b_shape_keys_actions and exporter.b_shape_keys_actions[action].name.lower().startswith("null"):
 							ignored_actions.append(action)
@@ -1470,8 +1454,6 @@ def export_rw4(file, export_symmetric, export_as_lod1):
 						# Only export from non-muted/checked tracks
 						if not t.mute:
 							for s in t.strips:
-								if s.action.name in used_actions: continue
-								used_actions.append(s.action.name)
 								exporter.b_shape_keys_actions[s.action] = obj
 								if s.action in ignored_actions: ignored_actions.remove(s.action)
 						# Add muted track actions to ignored actions
