@@ -1163,16 +1163,6 @@ class RW4Exporter:
 			if not is_shape_key:
 				# If there is no armature using the action then throw error
 				if action not in self.b_armature_actions:
-					# This error will not throw if the action is in the NLA sheet for the armature but set inactive
-					#matched = False
-					#if self.b_armature_object.animation_data:
-					#	for t in self.b_armature_object.animation_data.nla_tracks:
-					#		if matched: break
-					#		for s in t.strips:
-					#			if s.action == action:
-					#				matched = True
-					#				break
-					#if not matched:
 					if action not in ignored_actions:
 						error = rw4_validation.error_action_but_no_armature(action)
 						if error not in self.warnings:
@@ -1186,18 +1176,6 @@ class RW4Exporter:
 			# Shape Key
 			else:
 				if action not in self.b_shape_keys_actions:
-					# This error will not throw if the action is in the NLA sheet for any mesh object but set inactive
-					#matched = False
-					#for mesh in self.b_mesh_objects:
-					#	if matched: break
-					#	if mesh.animation_data:
-					#		for t in mesh.animation_data.nla_tracks:
-					#			if matched: break
-					#			for s in t.strips:
-					#				if s.action == action:
-					#					matched = True
-					#					break
-					#if not matched:
 					if action not in ignored_actions:
 						error = rw4_validation.error_action_but_no_object(action)
 						if error not in self.warnings:
