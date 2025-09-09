@@ -1151,14 +1151,15 @@ class RW4Exporter:
 		used_actions = {}
 		actions = bpy.data.actions
 		for action in actions:
-			if not action.fcurves:
+			if not action.fcurves or action in ignored_actions:
 				continue
+
 			if action.frame_range[0] != 0:
 				error = rw4_validation.error_action_start_frame(action)
 				if error not in self.warnings:
 					self.warnings.add(error)
 
-			if not action.use_fake_user and action not in ignored_actions:
+			if not action.use_fake_user:
 				error = rw4_validation.error_action_no_fake(action)
 				if error not in self.warnings:
 					self.warnings.add(error)
@@ -1169,10 +1170,9 @@ class RW4Exporter:
 			if not is_shape_key:
 				# If there is no armature using the action then throw error
 				if action not in self.b_armature_actions:
-					if action not in ignored_actions:
-						error = rw4_validation.error_action_but_no_armature(action)
-						if error not in self.warnings:
-							self.warnings.add(error)
+					error = rw4_validation.error_action_but_no_armature(action)
+					if error not in self.warnings:
+						self.warnings.add(error)
 					continue
 
 				# If the animation belongs to another armature, then it's in another collection and we can ignore it
@@ -1182,10 +1182,9 @@ class RW4Exporter:
 			# Shape Key
 			else:
 				if action not in self.b_shape_keys_actions:
-					if action not in ignored_actions:
-						error = rw4_validation.error_action_but_no_object(action)
-						if error not in self.warnings:
-							self.warnings.add(error)
+					error = rw4_validation.error_action_but_no_object(action)
+					if error not in self.warnings:
+						self.warnings.add(error)
 					continue
 
 				# If the animation does not use any of our meshes, then it's in another collection and we can ignore it
@@ -1210,7 +1209,18 @@ class RW4Exporter:
 			action_name = action.name.split('.')[0]
 
 			# Now, either add to animations list or to handles
-			is_morph_handle = action.rw4.is_morph_handle or (used_actions.get(action_name, None) and used_actions[action_name].rw4.is_morph_handle)
+			is_morph_handle = action.rw4.is_morph_handle
+			# Find if this action name has already been exported
+			if used_actions.get(action_name, None):
+				other_action = used_actions[action_name]
+				if other_action.rw4.is_morph_handle:
+					is_morph_handle = True
+				# Check if keyframe lengths differ
+				if other_action.frame_range[1] != action.frame_range[1]:
+					error = f"Actions '{action.name}' and '{other_action.name}' have different keyframe lengths ({action.frame_range[1]}, {other_action.frame_range[1]})."
+					if error not in self.warnings:
+						self.warnings.add(error)
+
 			if action.rw4 is not None and is_morph_handle:
 				if use_morphs: # If not using morphs (LOD1), skip this
 					handle = rw4_base.MorphHandle(self.render_ware)
