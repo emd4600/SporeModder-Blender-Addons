@@ -218,6 +218,7 @@ SPORE_NAMES = {
 	0x75d4c8cd: 'Point',
 	0x998BBF67: 'TurnOn',
 	0x5D8D0055: 'SmileFrown',
+	0x6B8356B9: 'Tongue',
 	0x892788C6: 'LickAir',
 	0xDD0DCEF4: 'Unique',
 	0x9891EEC7: 'MadSad',
