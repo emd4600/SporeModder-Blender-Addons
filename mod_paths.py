@@ -1,6 +1,7 @@
 from gettext import find
 import bpy
 import os
+from bpy.app.handlers import persistent
 
 # Sporemodder paths
 
@@ -12,7 +13,26 @@ paths = {
 	'EXO' : "Spore_Pack_03",
 	#'MOD' : "Mod",
 	#'IMPORT' : "File/Path/",
+	#'EXPORT' : "File/Path/Name.ext",
 }
+
+def clear_import_export_paths():
+	paths.pop('IMPORT', None)
+	paths.pop('EXPORT', None)
+	paths.pop('MOD', None)
+
+@persistent
+def on_blendfile_load(scene):
+	clear_import_export_paths()
+
+# Register the handler when the addon is enabled
+def register():
+	bpy.app.handlers.load_post.append(on_blendfile_load)
+
+def unregister():
+	if on_blendfile_load in bpy.app.handlers.load_post:
+		bpy.app.handlers.load_post.remove(on_blendfile_load)
+
 
 def using_import_folder():
 	prefs = bpy.context.preferences.addons.get(__package__)
@@ -82,7 +102,6 @@ def get_import_path(foldername : str = ""):
 # Get the last export path of the current mod, or the path to a manually specified mod.
 # If this does not exist, fallback to the mod path.
 def get_export_path(foldername : str = "", file : str = "", ext : str = ""):
-	print(paths)
 	if 'EXPORT' in paths:
 		return paths['EXPORT'].split('.')[0]
 	elif using_import_folder():

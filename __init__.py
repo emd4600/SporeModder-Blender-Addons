@@ -380,6 +380,7 @@ def register():
 	rw4_material_config.register()
 	rw4_animation_config.register()
 	anim_bone_config.register()
+	mod_paths.register()
 
 	for c in classes:
 		bpy.utils.register_class(c)
@@ -402,6 +403,7 @@ def unregister():
 	rw4_material_config.unregister()
 	rw4_animation_config.unregister()
 	anim_bone_config.unregister()
+	mod_paths.unregister()
 
 	for c in classes:
 		bpy.utils.unregister_class(c)
