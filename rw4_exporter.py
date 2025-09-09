@@ -1365,6 +1365,7 @@ def get_active_collection():
 	# Fallback: scene collection
 	if not collection or collection is None or not collection.all_objects:
 		collection = bpy.context.scene.collection
+	print(f"Exporting from collection: {collection.name}")
 	return collection
 
 def export_rw4(file, export_symmetric, export_as_lod1):
@@ -1413,9 +1414,6 @@ def export_rw4(file, export_symmetric, export_as_lod1):
 					for s in t.strips:
 						ignored_actions.append(s.action)
 			continue
-
-	# Process active collection
-	for obj in active_collection.objects:
 
 		# Exportable Armatures
 		if obj.type == 'ARMATURE':
