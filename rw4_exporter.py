@@ -1217,7 +1217,7 @@ class RW4Exporter:
 					is_morph_handle = True
 				# Check if keyframe lengths differ
 				if other_action.frame_range[1] != action.frame_range[1]:
-					error = f"Actions '{action.name}' and '{other_action.name}' have different keyframe lengths ({action.frame_range[1]}, {other_action.frame_range[1]})."
+					error = f"Actions '{action.name}' and '{other_action.name}' have different anim lengths ({action.frame_range[1]}, {other_action.frame_range[1]})."
 					if error not in self.warnings:
 						self.warnings.add(error)
 
