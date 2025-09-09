@@ -30,7 +30,7 @@ ANIMATION_NAMES = {
 	'root': ('Scale', 'Data1', 'Data2', 'Data3', 'Data4', 'Data5'),
 	'grsp': ('ClsdOpen', 'Point'),
 	'slsh': ('TurnOn',),
-	'wing': ('Tuck', 'wing_Bend', 'Bend', 'Flap', 'BigFlap'),
+	'wing': ('Tuck', 'wing_Bend', 'Flap'),
 	'foot': ('Bend',)
 }
 
@@ -459,7 +459,9 @@ class SporeAnimBoneProperties(bpy.types.PropertyGroup):
 	Tuck: FloatVectorProperty(name="Tuck", min=0.0, max=1.0, size=2, default=(0.0, 1.0))
 	Bend: FloatVectorProperty(name="Bend", min=0.0, max=1.0, size=2, default=(0.5, 1.0))
 	wing_Bend: FloatVectorProperty(name="Bend", min=0.0, max=1.0, size=2, default=(0.5, 0.0))
-	
+	Flap: FloatVectorProperty(name="Flap", min=0.0, max=1.0, size=2, default=(0.0, 0.0))
+
+	# Common custom values
 	LeftRight: FloatVectorProperty(name="LeftRight", min=0.0, max=1.0, size=2, default=(0.5, 1.0))
 	DownUp: FloatVectorProperty(name="DownUp", min=0.0, max=1.0, size=2, default=(0.5, 1.0))
 
