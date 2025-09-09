@@ -702,8 +702,9 @@ class RW4Exporter:
 			if active_material is not None and is_skinpaint:
 				for uv in uv_layer.data:
 					u, v = uv.uv[0], uv.uv[1]
-					if u < 0.0 or u > 1.0 or v < 0.0 or v > 1.0:
-						error = f"Mesh '{obj.name}' uses a skinpaint material but has out of bounds UV coordinates. Texture painting will not work correctly."
+					# Check for out of bounds UVs (UVs cannot be exactly 0.0 or 1.0 either)
+					if u <= 0.0 or u >= 1.0 or v <= 0.0 or v >= 1.0:
+						error = f"Mesh '{obj.name}' uses a skinpaint material but has out of bounds UV coordinates ({u}, {v}). Texture painting will not work correctly."
 						if error not in warnings:
 							warnings.add(error)
 						break
