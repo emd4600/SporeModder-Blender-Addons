@@ -60,7 +60,7 @@ def get_mod_projects_path():
 
 # Set the folder name of the desired import directory
 def set_import_path(path):
-	paths['IMPORT'] = path.split('.')[0]
+	paths['IMPORT'] = path
 
 # Set the folder name of the desired export directory
 def set_export_path(path):
@@ -96,8 +96,8 @@ def get_spore_data_path(package = 'GAME'):
 # If this does not exist, fallback to the spore data folder.
 def get_import_path(foldername : str = ""):
 	if 'IMPORT' in paths:
-		return paths['IMPORT'].split('.')[0]
-	else: return get_spore_data_path().split('.')[0]
+		return paths['IMPORT']
+	else: return get_spore_data_path()
 
 # Get the last export path of the current mod, or the path to a manually specified mod.
 # If this does not exist, fallback to the mod path.
