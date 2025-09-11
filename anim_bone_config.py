@@ -62,7 +62,7 @@ ENUM_SELECTX = (
 
 ENUM_SELECTY = (
 	('all', "All", ""),
-	('front', "Front", "Selects bodies in the front halfspace of te creature"),
+	('front', "Front", "Selects bodies in the front halfspace of the creature"),
 	('center', "Center", "Selects bodies in the center (in Y axis) area of the creature"),
 	('back', "Back", "Selects bodies in the back halfspace of the creature"),
 	('localFront', "Local Front", "Selects bodies in the front halfspace of the space comprised by all bodies that have the specified capability"),
@@ -73,7 +73,7 @@ ENUM_SELECTY = (
 
 ENUM_SELECTZ = (
 	('all', "All", ""),
-	('top', "Top", "Selects bodies in the top halfspace of te creature"),
+	('top', "Top", "Selects bodies in the top halfspace of the creature"),
 	('center', "Center", "Selects bodies in the center (in Z axis) area of the creature"),
 	('bottom', "Bottom", "Selects bodies in the bottom halfspace of the creature"),
 	('localTop', "Local Top", "Selects bodies in the top halfspace of the space comprised by all bodies that have the specified capability"),

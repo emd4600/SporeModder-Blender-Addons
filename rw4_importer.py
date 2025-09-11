@@ -741,6 +741,14 @@ class RW4Importer:
 		for i, handle in enumerate(handle_objects):
 			self.import_animation(handle.animation, self.b_animation_actions[i + anim_count])
 
+		# resize the timeline if needed
+		max_frame = 0
+		for action in self.b_animation_actions:
+			if action.frame_range[1] > max_frame:
+				max_frame = int(action.frame_range[1])
+		if max_frame > bpy.context.scene.frame_end:
+			bpy.context.scene.frame_end = max_frame
+
 		bpy.context.scene.frame_set(0)
 
 		self.add_nla_strips()
