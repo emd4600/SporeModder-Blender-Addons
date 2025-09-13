@@ -43,7 +43,7 @@ def create_vertex_geonode(name : str, displaytype='CUBE', displaysize=2, scale=(
 	# Group Output
 	group_output = nodes.new(type="NodeGroupOutput")
 	group_output.location = (400, 0)
-	if bpy.app.version[0] == 2:
+	if bpy.app.version[0] == 2 or bpy.app.version[0] == 3:
 		node_group.outputs.new('NodeSocketGeometry', "Geometry")
 		node_group.inputs.new('NodeSocketGeometry', "Geometry")
 	else:
