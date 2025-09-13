@@ -464,7 +464,6 @@ class RWMaterialBuilder:
 			self.render_states[rw4_enums.D3DRS_LIGHTING] = 0
 			self.render_states[rw4_enums.D3DRS_COLORWRITEENABLE] = 15
 
-
 		else:
 			raise NameError("Unsupported render states %s" % alpha_mode)
 

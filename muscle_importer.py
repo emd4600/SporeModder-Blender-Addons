@@ -180,7 +180,6 @@ def import_muscle_file(filepath):
 # Automatically detect min and max muscle files,
 # and import min as the base and max as a shape key set.
 def import_muscle_group_or_file(filepath):
-	mod_paths.set_import_path(filepath)
 	"""
 	Import either a muscle file or a muscle group file.
 
