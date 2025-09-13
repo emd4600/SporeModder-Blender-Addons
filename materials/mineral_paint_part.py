@@ -324,10 +324,6 @@ class MineralPaintPart(RWMaterial):
 
 		# -- RENDER STATES -- #
 
-		# Bit of a hack
-		#if is_window_texture:
-			#material.set_render_states('WINDOW_ALPHA')
-		#else:
 		material.set_render_states(rw4_material.alpha_type)
 
 		# -- SHADER CONSTANTS -- #

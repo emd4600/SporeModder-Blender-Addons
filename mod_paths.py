@@ -70,6 +70,7 @@ def set_export_path(path):
 # Set the folder name of the current mod.
 # will not set if this matches an existing path in the dict
 def set_mod_folder(foldername):
+	if not using_import_folder(): return
 	foldername = foldername.split('.')[0]
 	# foldername is a full path, find just the part after the projects directory
 	if "\\" in foldername:
@@ -106,7 +107,11 @@ def get_export_path(foldername : str = "", file : str = "", ext : str = ""):
 		return paths['EXPORT'].split('.')[0]
 	elif using_import_folder():
 		return get_mod_path(foldername, file, ext)
-	else: return file.split('.')[0] + ext
+	else:
+		name = file.split('.')[0]
+		if name:
+			return name + ext
+		return name
 
 # Get the path of the current mod, or the path to a manually specified mod.
 # If this does not exist, fallback to the spore data folder.
