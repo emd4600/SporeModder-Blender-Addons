@@ -133,7 +133,7 @@ class ImportRW4(bpy.types.Operator, ImportHelper):
 	def invoke(self, context, event):
 		self.filepath = bpy.data.filepath.split('.')[0]
 		if mod_paths.using_import_folder():
-			self.filepath = mod_paths.get_import_path()
+			self.filepath = mod_paths.get_import_path(type="RW4")
 		context.window_manager.fileselect_add(self)
 		return {'RUNNING_MODAL'}
 
@@ -161,6 +161,7 @@ class ImportRW4(bpy.types.Operator, ImportHelper):
 		settings.texture_format = self.texture_format
 
 		with open(self.filepath, 'br') as file:
+			mod_paths.set_import_path(self.filepath, type="RW4")
 			return import_rw4(file, self.filepath, settings)
 
 class ExportRW4(bpy.types.Operator, ExportHelper):
@@ -202,6 +203,29 @@ class ExportRW4(bpy.types.Operator, ExportHelper):
 		layout.prop(self, "export_symmetric")
 		layout.prop(self, "export_as_lod1")
 
+"""
+class ImportAnim(bpy.types.Operator, ImportHelper):
+	bl_idname = "import_my_format.anim_t"
+	bl_label = "Import Spore Animation"
+	bl_description = "Import a .anim_t skeleton animation from Spore"
+
+	filepath: bpy.props.StringProperty(subtype="FILE_PATH")
+	filter_glob: bpy.props.StringProperty(default="*.anim_t", options={'HIDDEN'})
+
+	def invoke(self, context, event):
+		self.filepath = bpy.data.filepath.split('.')[0]
+		if mod_paths.using_import_folder():
+			self.filepath = mod_paths.get_import_path(type="ANIM")
+		context.window_manager.fileselect_add(self)
+		return {'RUNNING_MODAL'}
+
+	def execute(self, context):
+		from .anim_importer import import_anim
+		import_anim(self.filepath)
+		mod_paths.set_import_path(self.filepath, type="ANIM")
+		self.report({'INFO'}, "Spore animation imported.")
+		return {'FINISHED'}
+"""
 
 class ExportAnim(bpy.types.Operator, ExportHelper):
 	bl_idname = "export_my_format.anim_t"
@@ -235,7 +259,7 @@ class ImportMuscle(bpy.types.Operator, ImportHelper):
 	def invoke(self, context, event):
 		self.filepath = bpy.data.filepath.split('.')[0]
 		if mod_paths.using_import_folder():
-			self.filepath = mod_paths.get_import_path()
+			self.filepath = mod_paths.get_import_path(type="MUSCLE")
 		context.window_manager.fileselect_add(self)
 		return {'RUNNING_MODAL'}
 
@@ -247,6 +271,7 @@ class ImportMuscle(bpy.types.Operator, ImportHelper):
 		filename = os.path.basename(self.filepath)
 		if filename.lower().startswith("group_"):
 			self.report({'WARNING'}, "Imported Muscle 'Group_' files do not support automatic morphs, consider importing the 'Muscle_' file instead.")
+		mod_paths.set_import_path(self.filepath, type="MUSCLE")
 		return import_muscle_group_or_file(self.filepath)
 
 
@@ -298,12 +323,13 @@ class ImportCityWall(bpy.types.Operator, ImportHelper):
 	def invoke(self, context, event):
 		self.filepath = bpy.data.filepath.split('.')[0]
 		if mod_paths.using_import_folder():
-			self.filepath = mod_paths.get_import_path()
+			self.filepath = mod_paths.get_import_path(type="CITYWALL")
 		context.window_manager.fileselect_add(self)
 		return {'RUNNING_MODAL'}
 
 	def execute(self, context):
 		from .citywall_importer import import_citywall
+		mod_paths.set_import_path(self.filepath, type="CITYWALL")
 		return import_citywall(self.filepath)
 
 
@@ -342,6 +368,9 @@ def rw4_exporter_menu_func(self, context):
 	self.layout.operator(ExportRW4.bl_idname, text="Spore RenderWare 4 (.rw4)")
 
 
+#def anim_importer_menu_func(self, context):
+#	self.layout.operator(ImportAnim.bl_idname, text="Spore Animation (.anim_t)")
+
 def anim_exporter_menu_func(self, context):
 	self.layout.operator(ExportAnim.bl_idname, text="Spore Animation (.anim_t)")
 
@@ -364,6 +393,7 @@ classes = (
 	ImportGMDL,
 	ImportRW4,
 	ExportRW4,
+	#ImportAnim,
 	ExportAnim,
 	ImportMuscle,
 	ExportMuscle,
@@ -388,6 +418,7 @@ def register():
 	bpy.types.TOPBAR_MT_file_import.append(gmdl_importer_menu_func)
 	bpy.types.TOPBAR_MT_file_import.append(rw4_importer_menu_func)
 	bpy.types.TOPBAR_MT_file_export.append(rw4_exporter_menu_func)
+	#bpy.types.TOPBAR_MT_file_import.append(anim_importer_menu_func)
 	bpy.types.TOPBAR_MT_file_export.append(anim_exporter_menu_func)
 	bpy.types.TOPBAR_MT_file_import.append(muscle_group_importer_menu_func)
 	bpy.types.TOPBAR_MT_file_export.append(muscle_group_exporter_menu_func)
@@ -411,6 +442,7 @@ def unregister():
 	bpy.types.TOPBAR_MT_file_import.remove(gmdl_importer_menu_func)
 	bpy.types.TOPBAR_MT_file_import.remove(rw4_importer_menu_func)
 	bpy.types.TOPBAR_MT_file_export.remove(rw4_exporter_menu_func)
+	#bpy.types.TOPBAR_MT_file_import.remove(anim_importer_menu_func)
 	bpy.types.TOPBAR_MT_file_export.remove(anim_exporter_menu_func)
 	bpy.types.TOPBAR_MT_file_import.remove(muscle_group_importer_menu_func)
 	bpy.types.TOPBAR_MT_file_export.remove(muscle_group_exporter_menu_func)
