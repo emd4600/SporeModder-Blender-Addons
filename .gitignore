@@ -1,3 +1,7 @@
 .idea
 __pycache__
 sporemodder_updater
+.vscode/settings.json
+/userscripts
+SporeModder.Blender.*
+materials/static_model_3texture.py
