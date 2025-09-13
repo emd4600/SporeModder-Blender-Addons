@@ -452,21 +452,34 @@ class RWMaterialBuilder:
 			self.render_states[rw4_enums.D3DRS_ZFUNC] = rw4_enums.D3DCMP_LESSEQUAL
 			self.render_states[rw4_enums.D3DRS_ALPHABLENDENABLE] = 1
 
+		elif alpha_mode == 'EDITOR_BACKGROUND':
+			self.render_states[rw4_enums.D3DRS_ZWRITEENABLE] = 1
+			self.render_states[rw4_enums.D3DRS_ALPHATESTENABLE] = 0
+			self.render_states[rw4_enums.D3DRS_CULLMODE] = rw4_enums.D3DCULL_CW
+			self.render_states[rw4_enums.D3DRS_ZFUNC] = rw4_enums.D3DCMP_LESSEQUAL
+			self.render_states[rw4_enums.D3DRS_ALPHABLENDENABLE] = 0
+			self.render_states[rw4_enums.D3DRS_FOGENABLE] = 0
+			# TODO: implement statesGroup
+			self.render_states[rw4_enums.D3DRS_TEXTUREFACTOR] = (1, 1, 1, -0.00392156862745098)
+			self.render_states[rw4_enums.D3DRS_LIGHTING] = 0
+			self.render_states[rw4_enums.D3DRS_COLORWRITEENABLE] = 15
+
+
 		else:
 			raise NameError("Unsupported render states %s" % alpha_mode)
 
 	def detect_render_states(self):
 		"""
-		Returns the detected alpha mode ('NO_ALPHA', 'ALPHA', 'EXCLUDING') depending on the render states of this
+		Returns the detected alpha mode ('NO_ALPHA', 'ALPHA', 'EXCLUDING', WINDOW_ALPHA) depending on the render states of this
 		material. Returns None if it cannot be detected.
 		"""
 		if rw4_enums.D3DRS_ALPHATESTENABLE not in self.render_states:
 			return None
 		if self.render_states[rw4_enums.D3DRS_ALPHATESTENABLE] == 0:
-			if rw4_enums.D3DRS_ALPHABLENDENABLE not in self.render_states or self.render_states[rw4_enums.D3DRS_ALPHABLENDENABLE] == 0:
+			#if rw4_enums.D3DRS_ALPHABLENDENABLE not in self.render_states or self.render_states[rw4_enums.D3DRS_ALPHABLENDENABLE] == 0:
 				return 'NO_ALPHA'
-			else:
-				return 'WINDOW_ALPHA'
+			#else:
+			#	return 'WINDOW_ALPHA'
 		else:
 			if rw4_enums.D3DRS_ALPHAREF not in self.render_states or self.render_states[rw4_enums.D3DRS_ALPHAREF] == 0:
 				return 'ALPHA'
