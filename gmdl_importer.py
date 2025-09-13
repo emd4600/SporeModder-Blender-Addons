@@ -235,7 +235,6 @@ def import_textures(b_mesh, filepath):
 
 
 def import_gmdl(file, import_skeleton, filepath):
-	mod_paths.set_import_path(filepath)
 	result = {'FINISHED'}
 
 	gmdl = SporeGameModel()
