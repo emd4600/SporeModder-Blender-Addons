@@ -28,7 +28,7 @@ def event_source_to_string(source):
 		("scale", "scale", 'noScale'),
 		("position", "position", 'default'),
 		("addposition", "addPosition", 'none'),
-		("rotation", "rotation", 'none'),
+		("rotation", "rotation", 'default'),
 		("handedness", "handedness", 'none'),
 	)
 
@@ -99,6 +99,12 @@ def event_to_string(internal_name, event):
 		text += f" -eventGroup {event.event_group}"
 	if event.max_dist != 0.0:
 		text += f" -maxSqrDist {event.max_dist**2}"
+	event_flags = event.flags
+	if event.type == 'effect' and event.effect_use_local_reference:
+		event_flags |= 0x40
+		
+	if event_flags != 0:
+		text += f" -flags 0x{event_flags:x}"
 
 	if event.effect_update_position:
 		text += " -updatePosition"
@@ -189,7 +195,7 @@ def info_keyframe_to_string(t, events, event_names, info_flags):
 	evs = [ev for ev in events if ev.play_frame == t]
 	if evs:
 		text += " -events"
-		text += "".join(f" {event_names[ev]}" for ev in events)
+		text += "".join(f" {event_names[ev]}" for ev in evs)
 
 	text += "\n"
 	return text
@@ -375,13 +381,15 @@ def export_anim(file):
 		text += "\tpos"
 		if channel_output.channel.relative_pos:
 			text += " -relative"
+		if channel_output.channel.flag_700:
+			text += " -flags 0x700"
 		if channel_output.channel.scale_mode != 'none':
 			text += f" -scaleMode {channel_output.channel.scale_mode}"
 
 		text += f"\n{channel_output.position_text}\tend\n"
 
 		text += "\trot"
-		if channel_output.channel.relative_pos:
+		if channel_output.channel.relative_rot:
 			text += " -relative"
 		if channel_output.channel.scale_mode != 'none':
 			text += f" -scaleMode {channel_output.channel.scale_mode}"
