@@ -132,10 +132,12 @@ TEXTURE_TRIM_REGIONS = [
 ]
 
 def sync_texture_diffuse(self, context):
-	self.fallback_texture = self.diffuse_texture
+	if self.fallback_texture != self.diffuse_texture:
+		self.fallback_texture = self.diffuse_texture
 
 def sync_texture_fallback(self, context):
-	self.diffuse_texture = self.fallback_texture
+	if self.diffuse_texture != self.fallback_texture:
+		self.diffuse_texture = self.fallback_texture
 
 def apply_uv_projection(_, __):
 	return
