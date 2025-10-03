@@ -230,8 +230,16 @@ def import_textures(b_mesh, filepath):
 			texture_node.image = image
 			texture_node.location = (-524, -322)
 
-			material.node_tree.links.new(material.node_tree.nodes["Principled BSDF"].inputs["Specular"],
-										 texture_node.outputs["Color"])
+			if bpy.app.version < (3, 6):
+				material.node_tree.links.new(
+					material.node_tree.nodes["Principled BSDF"].inputs["Specular"],
+					texture_node.outputs["Color"]
+				)
+			else:
+				material.node_tree.links.new(
+					material.node_tree.nodes["Principled BSDF"].inputs["Specular IOR Level"],
+					texture_node.outputs["Color"]
+				)
 
 
 def import_gmdl(file, import_skeleton, filepath):

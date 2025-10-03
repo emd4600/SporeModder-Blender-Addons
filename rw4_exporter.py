@@ -1137,7 +1137,7 @@ class RW4Exporter:
 		#     for i in range(3):
 		#         print(f"skin_bones_data += struct.pack('ffff', {dst_r[i][0]}, {dst_r[i][1]}, {dst_r[i][2]}, {dst_t[i]})")
 
-	def export_actions(self, ignored_actions, use_morphs = True):
+	def export_actions(self, ignored_actions, use_morphs = True, mirrored = False):
 
 		animations_list = rw4_base.Animations(self.render_ware)
 
@@ -1227,6 +1227,9 @@ class RW4Exporter:
 					handle.handle_id = file_io.get_hash(action_name)
 					handle.start_pos = action.rw4.initial_pos
 					handle.end_pos = action.rw4.final_pos
+					if mirrored:
+						handle.start_pos[0] *= -1
+						handle.end_pos[0] *= -1
 					handle.default_progress = action.rw4.default_progress / 100.0
 					handle.animation = keyframe_anim
 
@@ -1490,7 +1493,7 @@ def export_rw4(file, export_symmetric, export_as_lod1):
 
 	# Export symmetric variant of this model and these actions
 	if export_symmetric:
-		export_rw4_symmetric(file, valid_armatures, valid_meshes, ignored_actions, exporter.b_armature_actions, exporter.b_shape_keys_actions, export_as_lod1)
+		export_rw4_symmetric(file, valid_armatures, valid_meshes, exporter.b_armature_actions, exporter.b_shape_keys_actions, export_as_lod1)
 
 	# Reset frame
 	bpy.context.scene.frame_set(current_keyframe)
@@ -1507,7 +1510,7 @@ def export_rw4(file, export_symmetric, export_as_lod1):
 
 
 
-def export_rw4_symmetric(file, armatures, meshes, ignored_actions, armature_actions, shape_keys_actions, export_as_lod1):
+def export_rw4_symmetric(file, armatures, meshes, armature_actions, shape_keys_actions, export_as_lod1):
 	# Mirrors the active collection's meshes and armatures across X axis,
 	# flips face normals, and mirrors armature action bone keyframes
 
@@ -1516,6 +1519,7 @@ def export_rw4_symmetric(file, armatures, meshes, ignored_actions, armature_acti
 
 	# Create and return a temporary mesh object
 	def mirror_mesh_object(obj):
+		bpy.ops.object.mode_set(mode='OBJECT')
 		mirrored_obj = obj.copy()
 		mirrored_obj.data = obj.data.copy()
 		mirrored_obj.name = obj.name + "_Sym"
@@ -1541,6 +1545,7 @@ def export_rw4_symmetric(file, armatures, meshes, ignored_actions, armature_acti
 
 
 	def mirror_armature_object(obj):
+		bpy.ops.object.mode_set(mode='OBJECT')
 		mirrored_obj = obj.copy()
 		mirrored_obj.data = obj.data.copy()
 		mirrored_obj.name = obj.name + "_Sym"
@@ -1614,6 +1619,8 @@ def export_rw4_symmetric(file, armatures, meshes, ignored_actions, armature_acti
 
 		return mirrored_action
 
+	# Set ignored actions to all actions in this file except the mirrored ones
+	ignored_actions = [a for a in bpy.data.actions]
 
 	# Duplicate and mirror objects
 	mirrored_objs = []
@@ -1638,7 +1645,10 @@ def export_rw4_symmetric(file, armatures, meshes, ignored_actions, armature_acti
 		# Mirror armature actions
 		if obj.animation_data:
 			for item in armature_actions:
-				if armature_actions[item] == obj:
+				if (
+					armature_actions[item] == obj
+					and getattr(item, "id_root", None) == 'OBJECT'
+				):
 					act = mirror_action(item, mirrored_arm)
 					mirrored_actions[act] = mirrored_arm
 
@@ -1653,7 +1663,7 @@ def export_rw4_symmetric(file, armatures, meshes, ignored_actions, armature_acti
 		exporter_sym.export_mesh_object(mesh)
 	exporter_sym.export_bbox()
 	exporter_sym.export_kdtree()
-	exporter_sym.export_actions(ignored_actions, use_morphs = not export_as_lod1)
+	exporter_sym.export_actions(ignored_actions, use_morphs = not export_as_lod1, mirrored = True)
 
 	# Write symmetric model to file (append -symmetric)
 	sym_file_path = None

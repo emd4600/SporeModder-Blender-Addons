@@ -617,11 +617,18 @@ def updater_run_success_popup_handler(scene):
 	if updater.invalidupdater == True:
 		return
 
-	try:
-		bpy.app.handlers.scene_update_post.remove(
-			updater_run_success_popup_handler)
-	except:
-		pass
+	if bpy.app.version[0] < 4:
+		try:
+			bpy.app.handlers.scene_update_post.remove(
+				updater_run_success_popup_handler)
+		except:
+			pass
+	else:
+		try:
+			bpy.app.handlers.depsgraph_update_post.remove(
+				updater_run_success_popup_handler)
+		except:
+			pass
 
 	atr = addon_updater_updated_successful.bl_idname.split(".")
 	getattr(getattr(bpy.ops, atr[0]), atr[1])('INVOKE_DEFAULT')
@@ -636,11 +643,18 @@ def updater_run_install_popup_handler(scene):
 	if updater.invalidupdater == True:
 		return
 
-	try:
-		bpy.app.handlers.scene_update_post.remove(
-			updater_run_install_popup_handler)
-	except:
-		pass
+	if bpy.app.version[0] < 4:
+		try:
+			bpy.app.handlers.scene_update_post.remove(
+				updater_run_install_popup_handler)
+		except:
+			pass
+	else:
+		try:
+			bpy.app.handlers.depsgraph_update_post.remove(
+				updater_run_install_popup_handler)
+		except:
+			pass
 
 	if "ignore" in updater.json and updater.json["ignore"] == True:
 		return  # don't do popup if ignore pressed
@@ -675,12 +689,21 @@ def background_update_callback(update_ready):
 		return
 	if update_ready != True:
 		return
-	if updater_run_install_popup_handler not in \
-			bpy.app.handlers.scene_update_post and \
-			ran_autocheck_install_popup == False:
-		bpy.app.handlers.scene_update_post.append(
-			updater_run_install_popup_handler)
-		ran_autocheck_install_popup = True
+	
+	if bpy.app.version[0] < 4:
+		if updater_run_install_popup_handler not in \
+				bpy.app.handlers.scene_update_post and \
+				ran_autocheck_install_popup == False:
+			bpy.app.handlers.scene_update_post.append(
+				updater_run_install_popup_handler)
+			ran_autocheck_install_popup = True
+	else:
+		if updater_run_install_popup_handler not in \
+				bpy.app.handlers.depsgraph_update_post and \
+				ran_autocheck_install_popup == False:
+			bpy.app.handlers.depsgraph_update_post.append(
+				updater_run_install_popup_handler)
+			ran_autocheck_install_popup = True
 
 
 def post_update_callback(module_name, res=None):
@@ -811,12 +834,20 @@ def showReloadPopup():
 		# no handlers in this case
 		if updater.auto_reload_post_update == False: return
 
-		if updater_run_success_popup_handler not in \
-				bpy.app.handlers.scene_update_post \
-				and ran_update_sucess_popup == False:
-			bpy.app.handlers.scene_update_post.append(
-				updater_run_success_popup_handler)
-			ran_update_sucess_popup = True
+		if bpy.app.version[0] < 4:
+			if updater_run_success_popup_handler not in \
+					bpy.app.handlers.scene_update_post \
+					and ran_update_sucess_popup == False:
+				bpy.app.handlers.scene_update_post.append(
+					updater_run_success_popup_handler)
+				ran_update_sucess_popup = True
+		else:
+			if updater_run_success_popup_handler not in \
+					bpy.app.handlers.depsgraph_update_post \
+					and ran_update_sucess_popup == False:
+				bpy.app.handlers.depsgraph_update_post.append(
+					updater_run_success_popup_handler)
+				ran_update_sucess_popup = True
 
 
 # -----------------------------------------------------------------------------
