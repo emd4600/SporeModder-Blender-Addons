@@ -25,7 +25,7 @@ These addons allow you to export models to Spore using the 3D modelling software
 
 
 ## Installation:
-1. Download the `SporeModder.Blender.2.8.Addons.zip` from the [latest release page](https://github.com/emd4600/SporeModder-Blender-Addons/releases/latest).
+1. Download the `SporeModder.Blender.x.Addons.zip` from the [latest release page](https://github.com/emd4600/SporeModder-Blender-Addons/releases/latest).
 2. Open Blender, and click the **Edit -> Preferences...** menu.
 3. In the dialog that appears, go to the **Add-ons** tab and click the **Install...** button.
 
